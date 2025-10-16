@@ -113,12 +113,12 @@ Metrics → Forecast → Desired Replicas → KEDA → HPA → Workload
 
 ```mermaid
 flowchart TD
-    A[Metrics Sources\n(Prometheus, Kafka, HTTP, Custom)] --> B[Forecast Engine\n(Go)]
-    B --> C[Kedastral External Scaler\n(Go, gRPC)]
-    C --> D[KEDA Operator]
-    D --> E[Horizontal Pod Autoscaler]
-    E --> F[Target Deployment\n(User workload)]
-    D -->|Reactive metrics| B
+    A["Metrics Sources (Prometheus · Kafka · HTTP · Custom)"] --> B["Forecast Engine (Go)"]
+    B --> C["Kedastral External Scaler (Go, gRPC)"]
+    C --> D["KEDA Operator"]
+    D --> E["Horizontal Pod Autoscaler"]
+    E --> F["Target Deployment (User workload)"]
+    D -.->|Reactive metrics| B
 ```
 
 ---
