@@ -168,7 +168,7 @@ spec:
 
 | Component | Technology |
 |------------|-------------|
-| Core language | **Go** (≥1.23) |
+| Core language | **Go** (≥1.25) |
 | API | gRPC + REST |
 | Forecast models | Go (baseline), Python (optional plugin via HTTP) |
 | Storage | Redis / in-memory / pluggable |
