@@ -1,3 +1,17 @@
+// Package adapters provides Kedastral data source connectors that retrieve
+// metrics or contextual signals from external systems and normalize them
+// into a common DataFrame structure.
+//
+// Each adapter implements the Adapter interface and can be plugged into
+// the Kedastral Forecast Engine. Typical adapters include:
+//   - PrometheusAdapter — fetches metrics via the Prometheus HTTP API
+//   - HTTPAdapter       — calls arbitrary REST endpoints for events or data
+//   - ScheduleAdapter   — provides upcoming time-based events (e.g. matches)
+//   - KafkaAdapter      — reads lag, queue depth, or message rate
+//
+// Adapters are intentionally lightweight. They focus on pulling raw data,
+// shaping it into [DataFrame] objects, and leaving all feature building and
+// forecasting logic to Kedastral’s upper layers.
 package adapters
 
 import (
@@ -13,7 +27,7 @@ import (
 )
 
 // PrometheusAdapter fetches time-series data from the Prometheus HTTP API.
-// It issues a /api/v1/query_range call and returns a DataFrame with rows of the form:
+// It issues a /api/v1/query_range call and returns a *DataFrame with rows of the form:
 //
 //	{"ts": RFC3339 string, "value": float64}
 //
@@ -32,7 +46,7 @@ type PrometheusAdapter struct {
 func (p *PrometheusAdapter) Name() string { return "prometheus" }
 
 // Collect implements Adapter. It queries Prometheus for the last windowSeconds worth
-// of data, at StepSeconds resolution, and returns a DataFrame. It respects the
+// of data, at StepSeconds resolution, and returns a *DataFrame. It respects the
 // provided context for cancellation and deadlines.
 func (p *PrometheusAdapter) Collect(ctx context.Context, windowSeconds int) (*DataFrame, error) {
 	if p.ServerURL == "" || p.Query == "" {
