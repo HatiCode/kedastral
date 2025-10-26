@@ -88,15 +88,12 @@ func ToReplicas(prev int, forecast []float64, stepSec int, p Policy) []int {
 	}
 
 	// lead time offset in steps
-	i0 := int(math.Ceil(float64(p.LeadTimeSeconds) / float64(stepSec)))
-	if i0 < 0 {
-		i0 = 0
-	}
+	i0 := max(int(math.Ceil(float64(p.LeadTimeSeconds)/float64(stepSec))), 0)
 
 	res := make([]int, len(forecast))
 	prevOut := clampBounds(prev, p.MinReplicas, p.MaxReplicas)
 
-	for i := 0; i < len(forecast); i++ {
+	for i := range forecast {
 		// Conservative pick: single point at i+i0.
 		// If PrewarmWindowSteps > 0, take the max over [jStart..jEnd].
 		jStart := i + i0
