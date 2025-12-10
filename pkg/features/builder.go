@@ -35,23 +35,20 @@ func (b *Builder) BuildFeatures(df adapters.DataFrame) (models.FeatureFrame, err
 	rows := make([]map[string]float64, 0, len(df.Rows))
 
 	for _, row := range df.Rows {
-		// Skip rows without value field
 		valueRaw, hasValue := row["value"]
 		if !hasValue {
 			continue
 		}
 
-		// Convert value to float64
 		value, ok := toFloat64(valueRaw)
 		if !ok {
-			continue // Skip invalid values
+			continue
 		}
 
 		features := map[string]float64{
 			"value": value,
 		}
 
-		// Extract timestamp if present
 		if tsRaw, hasTs := row["ts"]; hasTs {
 			if timestamp, err := parseTimestamp(tsRaw); err == nil {
 				features["timestamp"] = float64(timestamp.Unix())
@@ -99,7 +96,6 @@ func toFloat64(v any) (float64, bool) {
 func parseTimestamp(v any) (time.Time, error) {
 	switch val := v.(type) {
 	case string:
-		// Try RFC3339 format
 		t, err := time.Parse(time.RFC3339, val)
 		if err != nil {
 			return time.Time{}, fmt.Errorf("invalid timestamp string: %w", err)
@@ -107,7 +103,6 @@ func parseTimestamp(v any) (time.Time, error) {
 		return t, nil
 
 	case float64:
-		// Unix timestamp in seconds
 		return time.Unix(int64(val), 0), nil
 
 	case int:
@@ -135,7 +130,6 @@ func FillMissingValues(frame models.FeatureFrame) models.FeatureFrame {
 		return frame
 	}
 
-	// Identify all feature keys
 	keys := make(map[string]bool)
 	for _, row := range frame.Rows {
 		for k := range row {
@@ -143,7 +137,6 @@ func FillMissingValues(frame models.FeatureFrame) models.FeatureFrame {
 		}
 	}
 
-	// For each feature, forward fill missing values
 	for key := range keys {
 		var lastValid float64
 		hasLastValid := false
@@ -153,7 +146,6 @@ func FillMissingValues(frame models.FeatureFrame) models.FeatureFrame {
 				lastValid = val
 				hasLastValid = true
 			} else if hasLastValid {
-				// Fill missing with last valid
 				frame.Rows[i][key] = lastValid
 			}
 		}

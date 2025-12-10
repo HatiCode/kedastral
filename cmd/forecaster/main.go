@@ -13,7 +13,7 @@ import (
 
 	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 	"github.com/HatiCode/kedastral/cmd/forecaster/logger"
-	"github.com/HatiCode/kedastral/cmd/forecaster/server"
+	"github.com/HatiCode/kedastral/cmd/forecaster/router"
 	"github.com/HatiCode/kedastral/pkg/adapters"
 	"github.com/HatiCode/kedastral/pkg/capacity"
 	"github.com/HatiCode/kedastral/pkg/features"
@@ -71,7 +71,7 @@ func main() {
 	)
 
 	staleAfter := 2 * cfg.Interval // Snapshot is stale if older than 2x the interval
-	mux := server.SetupRoutes(store, staleAfter, logger)
+	mux := router.SetupRoutes(store, staleAfter, logger)
 	httpServer := httpx.NewServer(cfg.Listen, mux, logger)
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -1,5 +1,5 @@
 // Package forecaster provides the core forecast loop orchestration.
-package server
+package router
 
 import (
 	"fmt"
