@@ -13,6 +13,7 @@ import (
 
 	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 	"github.com/HatiCode/kedastral/cmd/forecaster/logger"
+	"github.com/HatiCode/kedastral/cmd/forecaster/metrics"
 	"github.com/HatiCode/kedastral/cmd/forecaster/router"
 	"github.com/HatiCode/kedastral/pkg/adapters"
 	"github.com/HatiCode/kedastral/pkg/capacity"
@@ -57,6 +58,9 @@ func main() {
 		DownMaxPercentPerStep: cfg.DownMaxPercentPerStep,
 	}
 
+	// Initialize metrics
+	m := metrics.New(cfg.Workload)
+
 	f := New(
 		cfg.Workload,
 		adapter,
@@ -68,6 +72,7 @@ func main() {
 		cfg.Step,
 		cfg.Window,
 		logger,
+		m,
 	)
 
 	staleAfter := 2 * cfg.Interval // Snapshot is stale if older than 2x the interval

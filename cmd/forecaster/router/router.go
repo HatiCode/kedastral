@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	"github.com/HatiCode/kedastral/pkg/httpx"
 	"github.com/HatiCode/kedastral/pkg/storage"
 )
@@ -20,6 +22,9 @@ func SetupRoutes(store storage.Store, staleAfter time.Duration, logger *slog.Log
 
 	// Forecast snapshot endpoint
 	mux.HandleFunc("/forecast/current", handleGetSnapshot(store, staleAfter, logger))
+
+	// Prometheus metrics endpoint
+	mux.Handle("/metrics", promhttp.Handler())
 
 	return mux
 }

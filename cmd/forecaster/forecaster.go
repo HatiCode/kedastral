@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/HatiCode/kedastral/cmd/forecaster/metrics"
 	"github.com/HatiCode/kedastral/pkg/adapters"
 	"github.com/HatiCode/kedastral/pkg/capacity"
 	"github.com/HatiCode/kedastral/pkg/features"
@@ -28,6 +29,7 @@ type Forecaster struct {
 	step     time.Duration
 	window   time.Duration
 	logger   *slog.Logger
+	metrics  *metrics.Metrics
 
 	// Track current state for replicas calculation
 	currentReplicas int
@@ -43,6 +45,7 @@ func New(
 	policy capacity.Policy,
 	horizon, step, window time.Duration,
 	logger *slog.Logger,
+	metrics *metrics.Metrics,
 ) *Forecaster {
 	if logger == nil {
 		logger = slog.Default()
@@ -59,6 +62,7 @@ func New(
 		step:            step,
 		window:          window,
 		logger:          logger,
+		metrics:         metrics,
 		currentReplicas: policy.MinReplicas,
 	}
 }
@@ -96,23 +100,41 @@ func (f *Forecaster) Tick(ctx context.Context) error {
 
 	df, collectDuration, err := f.collect(ctx)
 	if err != nil {
+		if f.metrics != nil {
+			f.metrics.RecordError("adapter", "collect_failed")
+		}
 		return fmt.Errorf("collect: %w", err)
 	}
 
 	featureFrame, err := f.buildFeatures(df)
 	if err != nil {
+		if f.metrics != nil {
+			f.metrics.RecordError("features", "build_failed")
+		}
 		return fmt.Errorf("build features: %w", err)
 	}
 
 	forecast, predictDuration, err := f.predict(ctx, featureFrame)
 	if err != nil {
+		if f.metrics != nil {
+			f.metrics.RecordError("model", "predict_failed")
+		}
 		return fmt.Errorf("predict: %w", err)
 	}
 
 	desiredReplicas, capacityDuration := f.calculateReplicas(forecast.Values)
 
 	if err := f.storeSnapshot(forecast, desiredReplicas); err != nil {
+		if f.metrics != nil {
+			f.metrics.RecordError("store", "put_failed")
+		}
 		return fmt.Errorf("store: %w", err)
+	}
+
+	// Update metrics
+	if f.metrics != nil {
+		f.metrics.SetForecastAge(0) // Just generated
+		f.metrics.SetDesiredReplicas(f.currentReplicas)
 	}
 
 	totalDuration := time.Since(start)
@@ -139,6 +161,12 @@ func (f *Forecaster) collect(ctx context.Context) (*adapters.DataFrame, time.Dur
 	}
 
 	duration := time.Since(start)
+
+	// Record metrics
+	if f.metrics != nil {
+		f.metrics.RecordCollect(duration.Seconds())
+	}
+
 	f.logger.Debug("collected metrics",
 		"adapter", f.adapter.Name(),
 		"rows", len(df.Rows),
@@ -169,6 +197,12 @@ func (f *Forecaster) predict(ctx context.Context, features models.FeatureFrame) 
 	}
 
 	duration := time.Since(start)
+
+	// Record metrics
+	if f.metrics != nil {
+		f.metrics.RecordPredict(duration.Seconds())
+	}
+
 	f.logger.Debug("predicted forecast",
 		"model", f.model.Name(),
 		"values", len(forecast.Values),
@@ -194,6 +228,12 @@ func (f *Forecaster) calculateReplicas(values []float64) ([]int, time.Duration) 
 	}
 
 	duration := time.Since(start)
+
+	// Record metrics
+	if f.metrics != nil {
+		f.metrics.RecordCapacity(duration.Seconds())
+	}
+
 	f.logger.Debug("calculated replicas",
 		"current", f.currentReplicas,
 		"duration_ms", duration.Milliseconds(),
