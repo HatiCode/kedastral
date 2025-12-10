@@ -14,14 +14,14 @@ import (
 // snapshots. For production deployments requiring persistence or multi-instance
 // setups, consider using RedisStore instead.
 type MemoryStore struct {
-	mu           sync.RWMutex
-	snapshots    map[string]Snapshot
-	ttl          time.Duration
+	mu            sync.RWMutex
+	snapshots     map[string]Snapshot
+	ttl           time.Duration
 	cleanupTicker *time.Ticker
-	stopCleanup  chan struct{}
-	cleanupDone  chan struct{}
-	stopped      bool
-	stopMu       sync.Mutex
+	stopCleanup   chan struct{}
+	cleanupDone   chan struct{}
+	stopped       bool
+	stopMu        sync.Mutex
 }
 
 // NewMemoryStore creates a new in-memory snapshot store with no TTL.
@@ -57,7 +57,6 @@ func NewMemoryStoreWithTTL(ttl, cleanupInterval time.Duration) *MemoryStore {
 		cleanupDone:   make(chan struct{}),
 	}
 
-	// Start background cleanup goroutine
 	go store.runCleanup()
 
 	return store
@@ -81,7 +80,7 @@ func (s *MemoryStore) Stop() {
 	}
 
 	close(s.stopCleanup)
-	<-s.cleanupDone // Wait for cleanup to finish
+	<-s.cleanupDone
 	s.cleanupTicker.Stop()
 	s.stopped = true
 }
