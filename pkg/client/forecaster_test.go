@@ -1,0 +1,266 @@
+package client
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/HatiCode/kedastral/pkg/storage"
+)
+
+func TestNewForecasterClient(t *testing.T) {
+	client := NewForecasterClient("http://localhost:8081")
+	if client == nil {
+		t.Fatal("NewForecasterClient returned nil")
+	}
+	if client.baseURL != "http://localhost:8081" {
+		t.Errorf("baseURL = %q, want %q", client.baseURL, "http://localhost:8081")
+	}
+	if client.httpClient.Timeout != 5*time.Second {
+		t.Errorf("timeout = %v, want 5s", client.httpClient.Timeout)
+	}
+}
+
+func TestNewForecasterClientWithTimeout(t *testing.T) {
+	timeout := 10 * time.Second
+	client := NewForecasterClientWithTimeout("http://localhost:8081", timeout)
+	if client.httpClient.Timeout != timeout {
+		t.Errorf("timeout = %v, want %v", client.httpClient.Timeout, timeout)
+	}
+}
+
+func TestForecasterClient_GetSnapshot_Success(t *testing.T) {
+	// Create fake forecaster server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/forecast/current" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("workload") != "test-api" {
+			t.Errorf("unexpected workload: %s", r.URL.Query().Get("workload"))
+		}
+
+		resp := SnapshotResponse{
+			Workload:        "test-api",
+			Metric:          "http_rps",
+			GeneratedAt:     time.Now(),
+			StepSeconds:     60,
+			HorizonSeconds:  1800,
+			Values:          []float64{100, 110, 120},
+			DesiredReplicas: []int{2, 3, 3},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	result, err := client.GetSnapshot(context.Background(), "test-api")
+	if err != nil {
+		t.Fatalf("GetSnapshot() error = %v", err)
+	}
+
+	if result.Stale {
+		t.Error("Expected Stale = false")
+	}
+
+	snapshot := result.Snapshot
+	if snapshot.Workload != "test-api" {
+		t.Errorf("Workload = %q, want %q", snapshot.Workload, "test-api")
+	}
+	if snapshot.Metric != "http_rps" {
+		t.Errorf("Metric = %q, want %q", snapshot.Metric, "http_rps")
+	}
+	if len(snapshot.Values) != 3 {
+		t.Errorf("len(Values) = %d, want 3", len(snapshot.Values))
+	}
+	if len(snapshot.DesiredReplicas) != 3 {
+		t.Errorf("len(DesiredReplicas) = %d, want 3", len(snapshot.DesiredReplicas))
+	}
+}
+
+func TestForecasterClient_GetSnapshot_Stale(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set stale header per SPEC.md §3.1
+		w.Header().Set("X-Kedastral-Stale", "true")
+		w.Header().Set("Content-Type", "application/json")
+
+		resp := SnapshotResponse{
+			Workload:   "test-api",
+			GeneratedAt: time.Now().Add(-5 * time.Minute),
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	result, err := client.GetSnapshot(context.Background(), "test-api")
+	if err != nil {
+		t.Fatalf("GetSnapshot() error = %v", err)
+	}
+
+	if !result.Stale {
+		t.Error("Expected Stale = true")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "snapshot not found"})
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	_, err := client.GetSnapshot(context.Background(), "nonexistent")
+	if err == nil {
+		t.Fatal("Expected error for not found snapshot")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_EmptyWorkload(t *testing.T) {
+	client := NewForecasterClient("http://localhost:8081")
+	_, err := client.GetSnapshot(context.Background(), "")
+	if err == nil {
+		t.Fatal("Expected error for empty workload")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_InvalidURL(t *testing.T) {
+	client := NewForecasterClient("://invalid-url")
+	_, err := client.GetSnapshot(context.Background(), "test")
+	if err == nil {
+		t.Fatal("Expected error for invalid URL")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_ContextCancellation(t *testing.T) {
+	// Server that delays response
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+		json.NewEncoder(w).Encode(SnapshotResponse{})
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+
+	// Cancel context immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.GetSnapshot(ctx, "test-api")
+	if err == nil {
+		t.Fatal("Expected error for cancelled context")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_Timeout(t *testing.T) {
+	// Server that delays response longer than client timeout
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		json.NewEncoder(w).Encode(SnapshotResponse{})
+	}))
+	defer server.Close()
+
+	// Client with very short timeout
+	client := NewForecasterClientWithTimeout(server.URL, 10*time.Millisecond)
+
+	_, err := client.GetSnapshot(context.Background(), "test-api")
+	if err == nil {
+		t.Fatal("Expected timeout error")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("invalid json"))
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	_, err := client.GetSnapshot(context.Background(), "test-api")
+	if err == nil {
+		t.Fatal("Expected error for invalid JSON")
+	}
+}
+
+func TestForecasterClient_GetSnapshot_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	_, err := client.GetSnapshot(context.Background(), "test-api")
+	if err == nil {
+		t.Fatal("Expected error for server error")
+	}
+}
+
+func TestIsStale(t *testing.T) {
+	tests := []struct {
+		name       string
+		generatedAt time.Time
+		staleAfter time.Duration
+		want       bool
+	}{
+		{
+			name:       "fresh snapshot",
+			generatedAt: time.Now().Add(-30 * time.Second),
+			staleAfter: 2 * time.Minute,
+			want:       false,
+		},
+		{
+			name:       "stale snapshot",
+			generatedAt: time.Now().Add(-5 * time.Minute),
+			staleAfter: 2 * time.Minute,
+			want:       true,
+		},
+		{
+			name:       "just before threshold",
+			generatedAt: time.Now().Add(-1*time.Minute - 59*time.Second),
+			staleAfter: 2 * time.Minute,
+			want:       false, // Should be fresh
+		},
+		{
+			name:       "very old snapshot",
+			generatedAt: time.Now().Add(-1 * time.Hour),
+			staleAfter: 2 * time.Minute,
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			snapshot := storage.Snapshot{
+				GeneratedAt: tt.generatedAt,
+			}
+			got := IsStale(snapshot, tt.staleAfter)
+			if got != tt.want {
+				t.Errorf("IsStale() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestForecasterClient_GetSnapshot_URLConstruction(t *testing.T) {
+	// Verify URL is constructed correctly with special characters
+	var capturedURL string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = r.URL.String()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SnapshotResponse{Workload: "test"})
+	}))
+	defer server.Close()
+
+	client := NewForecasterClient(server.URL)
+	client.GetSnapshot(context.Background(), "my-api-prod")
+
+	expectedPath := "/forecast/current?workload=my-api-prod"
+	if capturedURL != expectedPath {
+		t.Errorf("URL = %q, want %q", capturedURL, expectedPath)
+	}
+}

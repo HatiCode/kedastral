@@ -46,7 +46,7 @@ func NewMemoryStoreWithTTL(ttl, cleanupInterval time.Duration) *MemoryStore {
 		panic("TTL must be positive")
 	}
 	if cleanupInterval <= 0 {
-		cleanupInterval = time.Minute // Default to 1 minute
+		cleanupInterval = time.Minute
 	}
 
 	store := &MemoryStore{
