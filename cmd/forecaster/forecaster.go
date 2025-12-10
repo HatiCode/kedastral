@@ -59,7 +59,7 @@ func New(
 		step:            step,
 		window:          window,
 		logger:          logger,
-		currentReplicas: policy.MinReplicas, // Start at min replicas
+		currentReplicas: policy.MinReplicas,
 	}
 }
 
@@ -71,7 +71,6 @@ func (f *Forecaster) Run(ctx context.Context, interval time.Duration) error {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// Run immediately on startup
 	if err := f.Tick(ctx); err != nil {
 		f.logger.Error("forecast tick failed", "error", err)
 	}
@@ -95,28 +94,23 @@ func (f *Forecaster) Tick(ctx context.Context) error {
 	start := time.Now()
 	f.logger.Debug("starting forecast tick")
 
-	// Step 1: Collect metrics
 	df, collectDuration, err := f.collect(ctx)
 	if err != nil {
 		return fmt.Errorf("collect: %w", err)
 	}
 
-	// Step 2: Build features
 	featureFrame, err := f.buildFeatures(df)
 	if err != nil {
 		return fmt.Errorf("build features: %w", err)
 	}
 
-	// Step 3: Predict
 	forecast, predictDuration, err := f.predict(ctx, featureFrame)
 	if err != nil {
 		return fmt.Errorf("predict: %w", err)
 	}
 
-	// Step 4: Calculate replicas
 	desiredReplicas, capacityDuration := f.calculateReplicas(forecast.Values)
 
-	// Step 5: Store snapshot
 	if err := f.storeSnapshot(forecast, desiredReplicas); err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -195,7 +189,6 @@ func (f *Forecaster) calculateReplicas(values []float64) ([]int, time.Duration) 
 		f.policy,
 	)
 
-	// Update current replicas for next iteration
 	if len(desiredReplicas) > 0 {
 		f.currentReplicas = desiredReplicas[0]
 	}
