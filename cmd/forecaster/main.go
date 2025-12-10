@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/HatiCode/kedastral/cmd/forecaster/config"
+	"github.com/HatiCode/kedastral/cmd/forecaster/logger"
 	"github.com/HatiCode/kedastral/cmd/forecaster/server"
 	"github.com/HatiCode/kedastral/pkg/adapters"
 	"github.com/HatiCode/kedastral/pkg/capacity"
@@ -20,32 +22,10 @@ import (
 	"github.com/HatiCode/kedastral/pkg/storage"
 )
 
-// Config holds all forecaster configuration.
-type Config struct {
-	Listen                string
-	Workload              string
-	Metric                string
-	Horizon               time.Duration
-	Step                  time.Duration
-	LeadTime              time.Duration
-	TargetPerPod          float64
-	Headroom              float64
-	MinReplicas           int
-	MaxReplicas           int
-	UpMaxFactorPerStep    float64
-	DownMaxPercentPerStep int
-	PromURL               string
-	PromQuery             string
-	Interval              time.Duration
-	Window                time.Duration
-	LogFormat             string
-	LogLevel              string
-}
-
 func main() {
-	cfg := parseFlags()
+	cfg := config.ParseFlags()
 
-	logger := setupLogger(cfg)
+	logger := logger.New(cfg)
 	slog.SetDefault(logger)
 
 	logger.Info("starting kedastral forecaster",

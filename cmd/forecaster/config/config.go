@@ -1,4 +1,5 @@
-package main
+// Package config implements the Kedastral forecaster config.
+package config
 
 import (
 	"flag"
@@ -7,8 +8,33 @@ import (
 	"time"
 )
 
-func parseFlags() Config {
-	cfg := Config{}
+// Config holds all forecaster configuration.
+type Config struct {
+	Listen                string
+	Workload              string
+	Metric                string
+	Horizon               time.Duration
+	Step                  time.Duration
+	LeadTime              time.Duration
+	TargetPerPod          float64
+	Headroom              float64
+	MinReplicas           int
+	MaxReplicas           int
+	UpMaxFactorPerStep    float64
+	DownMaxPercentPerStep int
+	PromURL               string
+	PromQuery             string
+	Interval              time.Duration
+	Window                time.Duration
+	LogFormat             string
+	LogLevel              string
+}
+
+// ParseFlags parses command-line flags and environment variables into a Config.
+// Exits with status 1 if required flags (workload, metric, prom-query) are missing.
+// Environment variables are used as fallbacks when flags are not provided.
+func ParseFlags() *Config {
+	cfg := &Config{}
 
 	// Server
 	flag.StringVar(&cfg.Listen, "listen", getEnv("LISTEN", ":8081"), "HTTP listen address")

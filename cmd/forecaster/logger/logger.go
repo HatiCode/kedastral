@@ -1,11 +1,13 @@
-package main
+package logger
 
 import (
 	"log/slog"
 	"os"
+
+	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 )
 
-func setupLogger(cfg Config) *slog.Logger {
+func New(cfg *config.Config) *slog.Logger {
 	var level slog.Level
 	switch cfg.LogLevel {
 	case "debug":
