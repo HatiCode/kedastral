@@ -1,6 +1,10 @@
 # 📘 README.md — *Kedastral*
 
-> **Kedastral** — *Predict tomorrow’s load, scale today.*
+> **Kedastral** — *Predict tomorrow's load, scale today.*
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/HatiCode/kedastral.svg)](https://pkg.go.dev/github.com/HatiCode/kedastral)
+[![Go Report Card](https://goreportcard.com/badge/github.com/HatiCode/kedastral)](https://goreportcard.com/report/github.com/HatiCode/kedastral)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ---
 
@@ -340,6 +344,33 @@ make help            # Show all available targets
 ```
 
 See the [examples/README.md](./examples/README.md) for detailed deployment instructions and configuration options.
+
+---
+
+## 📚 Documentation
+
+### API Documentation
+
+Full Go package documentation is available at [pkg.go.dev](https://pkg.go.dev/github.com/HatiCode/kedastral):
+
+- **[pkg/adapters](https://pkg.go.dev/github.com/HatiCode/kedastral/pkg/adapters)** - Data source connectors (Prometheus, etc.)
+- **[pkg/models](https://pkg.go.dev/github.com/HatiCode/kedastral/pkg/models)** - Forecasting model interfaces and implementations
+- **[pkg/capacity](https://pkg.go.dev/github.com/HatiCode/kedastral/pkg/capacity)** - Replica calculation and capacity planning
+- **[pkg/storage](https://pkg.go.dev/github.com/HatiCode/kedastral/pkg/storage)** - Forecast snapshot storage backends
+- **[pkg/features](https://pkg.go.dev/github.com/HatiCode/kedastral/pkg/features)** - Feature engineering utilities
+
+### View Documentation Locally
+
+```bash
+# Install godoc (if not already installed)
+go install golang.org/x/tools/cmd/godoc@latest
+
+# Start local documentation server
+godoc -http=:6060
+
+# Open in browser
+open http://localhost:6060/pkg/github.com/HatiCode/kedastral/
+```
 
 ---
 
