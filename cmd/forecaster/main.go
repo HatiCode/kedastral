@@ -23,6 +23,9 @@ import (
 	"github.com/HatiCode/kedastral/pkg/storage"
 )
 
+// version is set via ldflags at build time
+var version = "dev"
+
 func main() {
 	cfg := config.ParseFlags()
 
@@ -30,7 +33,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	logger.Info("starting kedastral forecaster",
-		"version", "v0.1.0",
+		"version", version,
 		"workload", cfg.Workload,
 		"metric", cfg.Metric,
 	)

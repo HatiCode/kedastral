@@ -1,5 +1,9 @@
 .PHONY: all build test clean proto help forecaster scaler
 
+# Version can be set via environment variable or defaults to dev
+VERSION ?= dev
+LDFLAGS := -X main.version=$(VERSION)
+
 # Default target
 all: build
 
@@ -9,12 +13,12 @@ build: forecaster scaler
 # Build forecaster
 forecaster:
 	@echo "Building forecaster..."
-	@go build -o bin/forecaster ./cmd/forecaster
+	@go build -ldflags "$(LDFLAGS)" -o bin/forecaster ./cmd/forecaster
 
 # Build scaler
 scaler:
 	@echo "Building scaler..."
-	@go build -o bin/scaler ./cmd/scaler
+	@go build -ldflags "$(LDFLAGS)" -o bin/scaler ./cmd/scaler
 
 # Run all tests
 test:
