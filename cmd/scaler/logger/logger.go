@@ -1,3 +1,11 @@
+// Package logger provides structured logging configuration for the scaler.
+//
+// It creates slog.Logger instances configured according to the scaler's Config,
+// supporting both text and JSON output formats, and configurable log levels
+// (debug, info, warn, error).
+//
+// The logger uses Go's standard library slog package for structured logging,
+// ensuring consistent log output across the scaler service.
 package logger
 
 import (

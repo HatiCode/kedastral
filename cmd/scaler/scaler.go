@@ -1,3 +1,16 @@
+// Package main implements the core KEDA External Scaler gRPC service.
+//
+// This file contains the Scaler type which implements the ExternalScaler interface
+// defined in the KEDA external scaler protocol. It handles four key gRPC methods:
+//
+//   - IsActive: Determines if the scaler should be active based on forecast freshness
+//   - GetMetricSpec: Returns metric specifications for KEDA (metric name and target)
+//   - GetMetrics: Returns current predicted replica counts from the forecaster
+//   - StreamIsActive: Not implemented (returns error directing to use 'external' type)
+//
+// The scaler fetches forecast snapshots from the Kedastral forecaster via HTTP,
+// selects the appropriate replica count based on configured lead time, and returns
+// this value to KEDA for scaling decisions.
 package main
 
 import (

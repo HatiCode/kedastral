@@ -1,3 +1,21 @@
+// Command scaler implements the KEDA External Scaler for Kedastral.
+//
+// The scaler acts as a gRPC server that implements the KEDA External Scaler protocol,
+// fetching forecast data from the Kedastral forecaster and returning predicted replica
+// counts to KEDA. It supports configurable lead time to pre-scale workloads before
+// anticipated load changes.
+//
+// Usage:
+//
+//	scaler -forecaster-url=http://forecaster:8081 -lead-time=5m
+//
+// Environment variables:
+//
+//	FORECASTER_URL - HTTP endpoint of the forecaster service
+//	SCALER_LISTEN  - gRPC listen address (default: :50051)
+//	LEAD_TIME      - Lead time for forecast selection (default: 5m)
+//	LOG_LEVEL      - Logging level: debug, info, warn, error (default: info)
+//	LOG_FORMAT     - Logging format: text, json (default: text)
 package main
 
 import (

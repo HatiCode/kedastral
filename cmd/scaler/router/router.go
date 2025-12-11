@@ -1,3 +1,12 @@
+// Package router configures HTTP routes for the scaler's HTTP server.
+//
+// The scaler exposes an auxiliary HTTP server (separate from the main gRPC service)
+// that provides health checks and Prometheus metrics. This package sets up the
+// routes for that HTTP server.
+//
+// Routes configured:
+//   - GET /healthz - Health check endpoint (returns 200 OK)
+//   - GET /metrics - Prometheus metrics endpoint
 package router
 
 import (

@@ -1,3 +1,18 @@
+// Package config provides configuration parsing and management for the scaler.
+//
+// It handles both command-line flags and environment variables, with flags taking
+// precedence over environment variables. The Config struct contains all runtime
+// configuration needed by the scaler service.
+//
+// Supported configuration sources (in order of precedence):
+//   1. Command-line flags
+//   2. Environment variables
+//   3. Default values
+//
+// Example usage:
+//
+//	cfg := config.ParseFlags()
+//	// cfg now contains validated configuration
 package config
 
 import (

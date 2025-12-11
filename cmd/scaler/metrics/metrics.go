@@ -1,3 +1,16 @@
+// Package metrics provides Prometheus metrics instrumentation for the scaler.
+//
+// It exposes operational metrics about the scaler's gRPC service performance,
+// forecast fetching behavior, and scaling decisions. All metrics are exposed
+// via the /metrics HTTP endpoint for Prometheus scraping.
+//
+// Metrics exposed:
+//   - kedastral_scaler_grpc_requests_total: Counter of gRPC requests by method and status
+//   - kedastral_scaler_grpc_request_duration_seconds: Histogram of gRPC request durations
+//   - kedastral_scaler_forecast_fetch_duration_seconds: Histogram of forecast fetch latency
+//   - kedastral_scaler_forecast_fetch_errors_total: Counter of forecast fetch errors
+//   - kedastral_scaler_desired_replicas_returned: Gauge of last replica count returned to KEDA
+//   - kedastral_scaler_forecast_age_seen_seconds: Gauge of forecast data age
 package metrics
 
 import (
