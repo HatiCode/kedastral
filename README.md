@@ -14,18 +14,29 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 
 ---
 
-## 🚀 Key Features
+## 🚀 Current Features (v0.1 MVP)
 
-| Feature | Description |
-|----------|-------------|
-| 🔮 **Predictive scaling** | Forecast short-term demand and set replica counts ahead of time. |
-| ⚙️ **KEDA-native integration** | Implements the official KEDA **External Scaler** gRPC interface — drop-in compatible. |
-| 🧩 **Pluggable design** | Bring your own data sources and forecasting models — heuristic, statistical, or ML. |
-| 🧠 **Built in Go** | Fast, efficient, minimal footprint; deployable as static binaries or containers. |
-| 🧱 **Extensible SDKs** | Well-defined interfaces for adapters and models so anyone can extend Kedastral. |
-| 🧾 **Declarative CRDs** | Kubernetes-native configuration (`ForecastPolicy`, `DataSource`). |
-| 🔐 **Data stays local** | No external calls — all forecasting and scaling happen *inside* your cluster. |
-| 📊 **Observability-ready** | Exposes Prometheus metrics and ships with Grafana dashboards. |
+| Feature | Description | Status |
+|----------|-------------|--------|
+| 🔮 **Predictive scaling** | Forecast short-term demand and set replica counts ahead of time | ✅ Implemented |
+| ⚙️ **KEDA-native integration** | Implements the official KEDA **External Scaler** gRPC interface | ✅ Implemented |
+| 📈 **Prometheus adapter** | Pull metrics from Prometheus for forecasting | ✅ Implemented |
+| 🧠 **Baseline forecasting model** | Statistical baseline with quantile-based prediction | ✅ Implemented |
+| 🧠 **Built in Go** | Fast, efficient, minimal footprint; deployable as static binaries or containers | ✅ Implemented |
+| 🧱 **Extensible interfaces** | Well-defined interfaces for adapters and models | ✅ Implemented |
+| 🔐 **Data stays local** | All forecasting and scaling happen *inside* your cluster | ✅ Implemented |
+| 📊 **Prometheus metrics** | Exposes metrics for monitoring forecast health | ✅ Implemented |
+| 🐳 **Docker support** | Dockerfiles for containerized deployment | ✅ Implemented |
+| 🧪 **Comprehensive tests** | 81 unit tests covering core functionality | ✅ Implemented |
+
+### 🔮 Planned Features
+
+- **Declarative CRDs** - Kubernetes-native configuration (`ForecastPolicy`, `DataSource`)
+- **Additional adapters** - Kafka, HTTP APIs, and custom data sources
+- **ML models** - Prophet, ARIMA, and custom model support
+- **Storage backends** - Redis and pluggable storage options
+- **Helm charts** - Easy deployment via Helm
+- **Grafana dashboards** - Pre-built dashboards for visualization
 
 ---
 
@@ -45,29 +56,29 @@ Kedastral is **domain-neutral**. You can use it for any workload that shows pred
 
 ## 🏗️ Architecture Overview
 
-Kedastral consists of **three main components**, all implemented in **Go** for performance and operational simplicity.
+Kedastral currently consists of **two main components**, both implemented in **Go** for performance and operational simplicity.
 
-### 1. **Forecast Engine**
+### 1. **Forecaster** (`cmd/forecaster`)
 
-- Collects recent metrics from one or more **data sources** (Prometheus, Kafka, HTTP APIs, etc.).
-- Uses a **forecasting model** (baseline heuristic, statistical, or machine learning) to predict short-term load.
-- Translates predicted load into **desired replica counts** using a simple, configurable capacity model.
+- Collects recent metrics from **Prometheus** using configurable queries
+- Uses a **baseline forecasting model** (statistical quantile-based prediction) to predict short-term load
+- Translates predicted load into **desired replica counts** using a configurable capacity policy
+- Stores forecasts in memory and exposes them via HTTP API (`/forecast/current`)
+- Exposes Prometheus metrics for monitoring (`/metrics`)
+- Health check endpoint (`/healthz`)
 
-### 2. **External Scaler**
+### 2. **Scaler** (`cmd/scaler`)
 
-- Implements the [KEDA External Scaler gRPC API](https://keda.sh/docs/latest/concepts/external-scalers/).
-- Periodically queries the Forecast Engine (directly or via Redis).
-- Returns **desired replicas** to KEDA, which adjusts Kubernetes HPAs automatically.
+- Implements the [KEDA External Scaler gRPC API](https://keda.sh/docs/latest/concepts/external-scalers/)
+- Periodically queries the Forecaster via HTTP to fetch the latest forecast
+- Selects appropriate replica count based on configured lead time
+- Returns **desired replicas** to KEDA via gRPC interface
+- Exposes health check and metrics endpoints
 
-### 3. **Custom Resource Definitions (CRDs)**
-
-- `ForecastPolicy` — defines what to forecast, prediction horizon, lead time, and capacity configuration.
-- `DataSource` — describes where metrics and features are fetched from.
-
-The three components form a closed feedback loop:
+The two components form a closed feedback loop:
 
 ```
-Metrics → Forecast → Desired Replicas → KEDA → HPA → Workload
+Prometheus → Forecaster → HTTP → Scaler → gRPC → KEDA → HPA → Workload
 ```
 
 ---
@@ -234,72 +245,63 @@ kubectl apply -f examples/scaled-object.yaml
 
 ---
 
-## ⚙️ Example CRD Configuration
+## 🧰 Current Tech Stack
 
-```yaml
-apiVersion: kedastral.io/v1alpha1
-kind: ForecastPolicy
-metadata:
-  name: api-forecast-policy
-spec:
-  targetRef:
-    name: my-api
-  metric: http_rps
-  horizon: 30m
-  leadTime: 5m
-  capacity:
-    targetPerPod: 200
-    headroom: 1.2
-    min: 2
-    max: 50
-  model:
-    type: baseline
-    quantile: 0.85
-  sources:
-    - name: rps
-      type: prometheus
-      query: sum(rate(http_requests_total[1m]))
-```
+| Component | Technology | Status |
+|------------|-------------|---------|
+| Core language | **Go** (≥1.25) | ✅ |
+| Forecaster API | REST (HTTP) | ✅ |
+| Scaler API | gRPC (KEDA External Scaler protocol) | ✅ |
+| Forecast model | Baseline (statistical) | ✅ |
+| Metrics adapter | Prometheus | ✅ |
+| Storage | In-memory | ✅ |
+| Observability | Prometheus metrics | ✅ |
+| Testing | Go testing framework (81 tests) | ✅ |
+| Deployment | Kubernetes manifests + Dockerfiles | ✅ |
+
+**Planned:** Redis storage, Helm charts, additional adapters (Kafka, HTTP), ML models (Prophet, ARIMA), Grafana dashboards
 
 ---
 
-## 🧰 Tech Stack
-
-| Component | Technology |
-|------------|-------------|
-| Core language | **Go** (≥1.25) |
-| API | gRPC + REST |
-| Forecast models | Go (baseline), Python (optional plugin via HTTP) |
-| Storage | Redis / in-memory / pluggable |
-| Metrics | Prometheus |
-| Deployment | Helm chart or Kustomize |
-| Observability | Grafana dashboards |
-| CI/CD | GitHub Actions |
-
----
-
-## 🧱 Internal Go Modules
+## 🧱 Current Project Structure
 
 ```
 kedastral/
 ├─ cmd/
-│  ├─ scaler/         # External Scaler binary (gRPC for KEDA)
-│  └─ forecaster/     # Forecast Engine binary
+│  ├─ forecaster/          # Forecaster binary and subpackages
+│  │  ├─ main.go
+│  │  ├─ forecaster.go
+│  │  ├─ config/           # Configuration parsing
+│  │  ├─ logger/           # Structured logging
+│  │  ├─ metrics/          # Prometheus metrics
+│  │  └─ router/           # HTTP routes
+│  └─ scaler/              # Scaler binary and subpackages
+│     ├─ main.go
+│     ├─ scaler.go
+│     ├─ config/           # Configuration parsing
+│     ├─ logger/           # Structured logging
+│     ├─ metrics/          # Prometheus metrics
+│     └─ router/           # HTTP routes
 ├─ pkg/
-│  ├─ adapters/       # Prometheus, Kafka, HTTP, File adapters
-│  ├─ models/         # baseline, prophet, byom
-│  ├─ capacity/       # replica math, lead-time logic, safety clamps
-│  ├─ api/            # Protobuf + CRD definitions
-│  └─ storage/        # Redis / in-memory implementations
-├─ deploy/
-│  ├─ helm/           # Helm chart for Kedastral
-│  ├─ examples/       # Example ForecastPolicies
-│  └─ grafana/        # Dashboards
-├─ docs/
-│  ├─ quickstart.md
-│  ├─ architecture.md
-│  ├─ extending.md
-│  └─ forecasting.md
+│  ├─ adapters/            # Prometheus adapter
+│  ├─ models/              # Baseline forecasting model
+│  ├─ capacity/            # Replica calculation logic
+│  ├─ features/            # Feature engineering
+│  ├─ storage/             # In-memory snapshot storage
+│  ├─ httpx/               # HTTP server utilities
+│  └─ api/externalscaler/  # KEDA External Scaler protobuf
+├─ examples/               # Kubernetes deployment examples
+│  ├─ deployment.yaml      # Complete deployment manifests
+│  ├─ scaled-object.yaml   # KEDA ScaledObject example
+│  └─ README.md            # Detailed usage guide
+├─ docs/                   # Design documentation
+│  ├─ capacity-planner.md
+│  ├─ cli-design.md
+│  └─ forecaster-store-interface.md
+├─ test/integration/       # Integration tests
+├─ Dockerfile.forecaster   # Forecaster container image
+├─ Dockerfile.scaler       # Scaler container image
+├─ Makefile                # Build automation
 └─ LICENSE (Apache-2.0)
 ```
 
@@ -400,13 +402,25 @@ type ForecastModel interface {
 
 ## 🗺️ Roadmap
 
-| Milestone | Key Features |
-|------------|---------------|
-| **v0.1** | Forecast Engine + External Scaler + Prometheus adapter + baseline model |
-| **v0.2** | Prophet + Redis + Helm chart + Grafana dashboards |
-| **v0.3** | CRDs (ForecastPolicy/DataSource), BYOM plugin |
-| **v0.4** | Multi-metric ensembles, safety clamps, hybrid mode |
-| **v1.0** | Kedastral Operator + model registry + full conformance tests |
+| Milestone | Key Features | Status |
+|------------|---------------|---------|
+| **v0.1** (MVP) | Forecaster + Scaler + Prometheus adapter + baseline model + in-memory storage | ✅ **Complete** |
+| **v0.2** | Redis storage + additional ML models (Prophet, ARIMA) + Helm chart | 🔄 Planned |
+| **v0.3** | CRDs (ForecastPolicy/DataSource) + Grafana dashboards | 🔄 Planned |
+| **v0.4** | Additional adapters (Kafka, HTTP) + BYOM plugin + multi-metric ensembles | 🔄 Planned |
+| **v1.0** | Kedastral Operator + model registry + full conformance tests + production hardening | 🔄 Planned |
+
+**v0.1 Deliverables (Current):**
+- ✅ Forecaster binary with Prometheus integration
+- ✅ Scaler binary implementing KEDA External Scaler protocol
+- ✅ Baseline statistical forecasting model
+- ✅ In-memory forecast storage
+- ✅ Capacity planning with configurable policies
+- ✅ Prometheus metrics for observability
+- ✅ 81 unit tests
+- ✅ Docker support
+- ✅ Kubernetes deployment examples
+- ✅ Comprehensive documentation
 
 ---
 
@@ -437,10 +451,16 @@ For detailed instructions, see the [Quick Start](#-quick-start) section above an
 
 **Project Name:** Kedastral
 **Purpose:** Predictive autoscaling framework for Kubernetes built around KEDA
-**Core Language:** Go
-**Primary Components:** Forecast Engine, External Scaler (gRPC), Kubernetes CRDs
-**Key Integrations:** KEDA, Prometheus, Redis
+**Core Language:** Go (≥1.25)
+**Current Status:** v0.1 MVP - Production-ready core components
+**Primary Components:**
+- Forecaster (HTTP API, Prometheus integration, baseline model)
+- Scaler (gRPC KEDA External Scaler implementation)
+
+**Key Integrations:** KEDA (External Scaler protocol), Prometheus (metrics source)
+**Storage:** In-memory (Redis planned for v0.2)
 **Domain Scope:** Domain-agnostic (works for any workload)
 **Mission:** Enable proactive scaling decisions in Kubernetes through forecasted metrics
-**Deployment:** Helm chart
-**Architecture Keywords:** predictive autoscaling, machine learning forecasting, Kubernetes operator, Go, gRPC, KEDA-compatible, CRDs, observability, modular adapters.
+**Deployment:** Kubernetes manifests + Docker containers (Helm planned for v0.2)
+**Testing:** 81 unit tests covering core functionality
+**Architecture Keywords:** predictive autoscaling, statistical forecasting, Kubernetes, Go, gRPC, KEDA External Scaler, Prometheus, time-series prediction, capacity planning, proactive scaling
