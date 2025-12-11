@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -26,40 +25,58 @@ func TestForecasterScalerE2E(t *testing.T) {
 
 	ctx := context.Background()
 
-	// 1. Start a mock Prometheus server using nginx
-	// Create a JSON response that mimics Prometheus
-	currentValue := 100.0
-	promResponse := fmt.Sprintf(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{"service":"test-api"},"value":[%d,"%f"]}]}}`,
-		time.Now().Unix(), currentValue)
+	// Create a custom network for container-to-container communication
+	networkName := "kedastral-test"
+	network, err := testcontainers.GenericNetwork(ctx, testcontainers.GenericNetworkRequest{
+		NetworkRequest: testcontainers.NetworkRequest{
+			Name:           networkName,
+			CheckDuplicate: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create network: %v", err)
+	}
+	defer network.Remove(ctx)
 
-	// Simple nginx config that serves JSON
-	nginxConf := `
-events {
-    worker_connections 1024;
-}
-http {
-    server {
-        listen 80;
-        location /api/v1/query {
-            default_type application/json;
-            return 200 '` + promResponse + `';
-        }
-    }
-}
+	// 1. Start a mock Prometheus server using Python's built-in HTTP server
+	// This returns a matrix result with multiple time series points
+	now := time.Now().Unix()
+	promResponse := fmt.Sprintf(`{"status":"success","data":{"resultType":"matrix","result":[{"metric":{"service":"test-api"},"values":[[%d,"100.0"],[%d,"110.0"],[%d,"120.0"],[%d,"130.0"],[%d,"140.0"]]}]}}`, now-240, now-180, now-120, now-60, now)
+
+	// Create a simple Python HTTP server that mimics Prometheus API
+	pythonScript := `
+import http.server
+import socketserver
+
+class PrometheusHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        # Accept any path with query parameter (Prometheus range queries) or /api/v1/query
+        if '?' in self.path or '/api/v1/query' in self.path:
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'` + promResponse + `')
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # Suppress HTTP logs
+
+PORT = 9090
+with socketserver.TCPServer(("", PORT), PrometheusHandler) as httpd:
+    httpd.serve_forever()
 `
 
 	promReq := testcontainers.ContainerRequest{
-		Image:        "nginx:alpine",
-		ExposedPorts: []string{"80/tcp"},
-		Files: []testcontainers.ContainerFile{
-			{
-				HostFilePath:      "",
-				ContainerFilePath: "/etc/nginx/nginx.conf",
-				FileMode:          0644,
-				Reader:            strings.NewReader(nginxConf),
-			},
+		Image:        "python:3.11-alpine",
+		ExposedPorts: []string{"9090/tcp"},
+		Cmd:          []string{"python", "-c", pythonScript},
+		Networks:     []string{networkName},
+		NetworkAliases: map[string][]string{
+			networkName: {"prometheus"},
 		},
-		WaitingFor: wait.ForHTTP("/api/v1/query").WithPort("80/tcp").WithStartupTimeout(30 * time.Second),
+		WaitingFor: wait.ForListeningPort("9090/tcp").WithStartupTimeout(30 * time.Second),
 	}
 
 	promContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
@@ -71,23 +88,20 @@ http {
 	}
 	defer promContainer.Terminate(ctx)
 
-	// Get the container's IP address (containers can communicate via internal network)
-	promHost, err := promContainer.ContainerIP(ctx)
-	if err != nil {
-		t.Fatalf("Failed to get Prometheus container IP: %v", err)
-	}
-
-	promURL := fmt.Sprintf("http://%s", promHost)
-	t.Logf("Mock Prometheus URL: %s", promURL)
+	// Use the network alias for container-to-container communication
+	promURL := "http://prometheus:9090"
 
 	// 2. Build and start the forecaster container
-	t.Log("Building and starting forecaster container...")
 	forecasterReq := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    "../../",
 			Dockerfile: "Dockerfile.forecaster",
 		},
 		ExposedPorts: []string{"8081/tcp"},
+		Networks:     []string{networkName},
+		NetworkAliases: map[string][]string{
+			networkName: {"forecaster"},
+		},
 		Cmd: []string{
 			"-workload=test-api",
 			"-metric=http_rps",
@@ -127,11 +141,8 @@ http {
 	}
 
 	forecasterURL := fmt.Sprintf("http://%s:%s", forecasterHost, forecasterPort.Port())
-	t.Logf("Forecaster running at: %s", forecasterURL)
 
 	// Wait for the forecaster to generate at least one forecast
-	// Interval is 5s, so give it a bit more time to run the first forecast cycle
-	t.Log("Waiting for forecaster to generate initial forecast...")
 	time.Sleep(15 * time.Second)
 
 	// Verify forecaster has a forecast
@@ -142,13 +153,22 @@ http {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Print container logs for debugging
+		// Print forecaster container logs
 		logs, logErr := forecasterContainer.Logs(ctx)
 		if logErr == nil {
 			defer logs.Close()
 			logBytes, _ := io.ReadAll(logs)
 			t.Logf("Forecaster container logs:\n%s", string(logBytes))
 		}
+
+		// Print Prometheus container logs to see if it received requests
+		promLogs, promLogErr := promContainer.Logs(ctx)
+		if promLogErr == nil {
+			defer promLogs.Close()
+			promLogBytes, _ := io.ReadAll(promLogs)
+			t.Logf("Prometheus container logs:\n%s", string(promLogBytes))
+		}
+
 		t.Fatalf("Forecaster returned non-OK status: %d", resp.StatusCode)
 	}
 
@@ -156,18 +176,21 @@ http {
 	if err := json.NewDecoder(resp.Body).Decode(&forecastCheck); err != nil {
 		t.Fatalf("Failed to decode forecast: %v", err)
 	}
-	t.Logf("Forecast snapshot: %+v", forecastCheck)
 
 	// 3. Build and start the scaler container
-	t.Log("Building and starting scaler container...")
+
+	// Use the forecaster's network alias for container-to-container communication
+	forecasterNetworkURL := "http://forecaster:8081"
+
 	scalerReq := testcontainers.ContainerRequest{
 		FromDockerfile: testcontainers.FromDockerfile{
 			Context:    "../../",
 			Dockerfile: "Dockerfile.scaler",
 		},
 		ExposedPorts: []string{"50051/tcp", "8082/tcp"},
+		Networks:     []string{networkName},
 		Cmd: []string{
-			"-forecaster-url=" + forecasterURL,
+			"-forecaster-url=" + forecasterNetworkURL,
 			"-lead-time=5m",
 			"-log-level=debug",
 		},
@@ -194,10 +217,8 @@ http {
 	}
 
 	scalerGRPCAddr := fmt.Sprintf("%s:%s", scalerHost, scalerGRPCPort.Port())
-	t.Logf("Scaler gRPC running at: %s", scalerGRPCAddr)
 
 	// 4. Connect to the scaler via gRPC (simulating KEDA)
-	t.Log("Connecting to scaler gRPC service...")
 	conn, err := grpc.NewClient(
 		scalerGRPCAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
