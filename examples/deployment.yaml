@@ -1,0 +1,211 @@
+# Complete Kedastral deployment example
+#
+# This file shows how to deploy both the forecaster and scaler components
+# in a Kubernetes cluster for use with KEDA.
+
+---
+# Forecaster Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: forecaster
+    spec:
+      containers:
+        - name: forecaster
+          image: kedastral/forecaster:latest  # Replace with your image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          args:
+            - -workload=my-api
+            - -metric=http_rps
+            - -prom-url=http://prometheus.monitoring.svc.cluster.local:9090
+            - -prom-query=sum(rate(http_requests_total{service="my-api"}[1m]))
+            - -target-per-pod=100
+            - -headroom=1.2
+            - -min=2
+            - -max=50
+            - -horizon=30m
+            - -step=1m
+            - -lead-time=5m
+            - -interval=30s
+            - -window=30m
+            - -log-level=info
+            - -log-format=json
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+---
+# Forecaster Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+      protocol: TCP
+  selector:
+    app: kedastral
+    component: forecaster
+
+---
+# Scaler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: scaler
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: scaler
+    spec:
+      containers:
+        - name: scaler
+          image: kedastral/scaler:latest  # Replace with your image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+            - name: metrics
+              containerPort: 8082
+              protocol: TCP
+          args:
+            - -forecaster-url=http://kedastral-forecaster.default.svc.cluster.local:8081
+            - -lead-time=5m
+            - -log-level=info
+            - -log-format=json
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+---
+# Scaler Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+      protocol: TCP
+    - name: metrics
+      port: 8082
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    app: kedastral
+    component: scaler
+
+---
+# ServiceMonitor for Prometheus (optional)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+spec:
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+spec:
+  selector:
+    matchLabels:
+      app: kedastral
+      component: scaler
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

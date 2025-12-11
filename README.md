@@ -135,6 +135,105 @@ flowchart TD
 
 ---
 
+## 🚀 Quick Start
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/HatiCode/kedastral.git
+cd kedastral
+
+# Build both forecaster and scaler
+make build
+
+# Or build individually
+make forecaster
+make scaler
+
+# Run tests
+make test
+```
+
+### Running Locally
+
+#### 1. Start the Forecaster
+
+The forecaster generates predictions and exposes them via HTTP:
+
+```bash
+./bin/forecaster \
+  -workload=my-api \
+  -metric=http_rps \
+  -prom-url=http://localhost:9090 \
+  -prom-query='sum(rate(http_requests_total{service="my-api"}[1m]))' \
+  -target-per-pod=100 \
+  -headroom=1.2 \
+  -min=2 \
+  -max=50 \
+  -lead-time=5m \
+  -log-level=info
+```
+
+Check the forecast:
+```bash
+curl "http://localhost:8081/forecast/current?workload=my-api"
+```
+
+#### 2. Start the Scaler
+
+The scaler implements the KEDA External Scaler gRPC interface:
+
+```bash
+./bin/scaler \
+  -forecaster-url=http://localhost:8081 \
+  -lead-time=5m \
+  -log-level=info
+```
+
+The scaler exposes:
+- gRPC on `:50051` for KEDA
+- HTTP metrics on `:8082`
+
+#### 3. Configure KEDA
+
+Apply a ScaledObject to connect KEDA to Kedastral:
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-scaledobject
+spec:
+  scaleTargetRef:
+    name: my-api
+    kind: Deployment
+  pollingInterval: 30
+  minReplicaCount: 2
+  maxReplicaCount: 50
+  triggers:
+    - type: external
+      metadata:
+        scalerAddress: kedastral-scaler:50051
+        workload: my-api
+```
+
+### Deploying to Kubernetes
+
+See the [examples/](./examples/) directory for complete Kubernetes deployment manifests:
+
+- **[examples/deployment.yaml](./examples/deployment.yaml)** - Complete deployment for forecaster and scaler
+- **[examples/scaled-object.yaml](./examples/scaled-object.yaml)** - KEDA ScaledObject configuration
+- **[examples/README.md](./examples/README.md)** - Detailed usage guide with configuration tables and troubleshooting
+
+Quick deploy:
+```bash
+kubectl apply -f examples/deployment.yaml
+kubectl apply -f examples/scaled-object.yaml
+```
+
+---
+
 ## ⚙️ Example CRD Configuration
 
 ```yaml
@@ -208,12 +307,37 @@ kedastral/
 
 ## 🔧 Installation
 
+### Prerequisites
+
+- Go 1.25 or later (for building from source)
+- Kubernetes cluster (v1.20+)
+- KEDA installed ([installation guide](https://keda.sh/docs/latest/deploy/))
+- Prometheus running in the cluster
+
+### From Source
+
 ```bash
-helm repo add kedastral https://kedastral.github.io/charts
-helm install kedastral kedastral/kedastral
+# Clone and build
+git clone https://github.com/HatiCode/kedastral.git
+cd kedastral
+make build
+
+# Deploy to Kubernetes
+kubectl apply -f examples/deployment.yaml
+kubectl apply -f examples/scaled-object.yaml
 ```
 
-Then apply your `ForecastPolicy` and `DataSource` CRDs, and Kedastral will automatically start predicting and scaling your workloads via KEDA.
+### Using Makefile
+
+```bash
+make build           # Build both forecaster and scaler
+make test            # Run all tests
+make test-coverage   # Run tests with coverage report
+make clean           # Remove build artifacts
+make help            # Show all available targets
+```
+
+See the [examples/README.md](./examples/README.md) for detailed deployment instructions and configuration options.
 
 ---
 
@@ -286,20 +410,26 @@ type ForecastModel interface {
 
 ---
 
-## ✨ Example Quick Start
+## ✨ Getting Started
 
 ```bash
-# 1. Install Kedastral
-helm install kedastral kedastral/kedastral
+# 1. Build Kedastral
+make build
 
-# 2. Apply data source and forecast policy
-kubectl apply -f examples/prometheus-source.yaml
-kubectl apply -f examples/api-forecast-policy.yaml
+# 2. Deploy to Kubernetes
+kubectl apply -f examples/deployment.yaml
+kubectl apply -f examples/scaled-object.yaml
 
-# 3. Watch predictions
-kubectl logs -l app=kedastral-forecaster
-kubectl get hpa
+# 3. Monitor forecasts
+kubectl logs -l component=forecaster -f
+kubectl logs -l component=scaler -f
+
+# 4. Check current forecast
+kubectl port-forward svc/kedastral-forecaster 8081:8081
+curl "http://localhost:8081/forecast/current?workload=my-api"
 ```
+
+For detailed instructions, see the [Quick Start](#-quick-start) section above and [examples/README.md](./examples/README.md).
 
 ---
 

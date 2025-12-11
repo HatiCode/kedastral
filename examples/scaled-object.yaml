@@ -1,0 +1,57 @@
+# Example KEDA ScaledObject using Kedastral External Scaler
+#
+# This demonstrates how to configure KEDA to use Kedastral for predictive autoscaling.
+# The scaler fetches forecasts from the Kedastral forecaster and returns desired replicas to KEDA.
+
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-scaledobject
+  namespace: default
+spec:
+  # Target deployment to scale
+  scaleTargetRef:
+    name: my-api
+    kind: Deployment
+
+  # Polling interval - how often KEDA calls the scaler
+  pollingInterval: 30
+
+  # Cooldown period after scaling
+  cooldownPeriod: 60
+
+  # Min/max replicas (overrides forecaster's policy)
+  minReplicaCount: 2
+  maxReplicaCount: 50
+
+  # Triggers
+  triggers:
+    - type: external
+      metadata:
+        # Address of the Kedastral scaler gRPC service
+        scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
+
+        # Workload name - must match the forecaster configuration
+        workload: my-api
+
+        # Optional: Custom metric name
+        # Default: kedastral-{workload}-desired-replicas
+        metricName: kedastral-my-api-desired-replicas
+
+---
+# Alternative: Using external-push for streaming (not implemented yet)
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata:
+#   name: my-api-scaledobject-push
+#   namespace: default
+# spec:
+#   scaleTargetRef:
+#     name: my-api
+#     kind: Deployment
+#
+#   triggers:
+#     - type: external-push
+#       metadata:
+#         scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
+#         workload: my-api
