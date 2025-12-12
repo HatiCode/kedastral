@@ -1,0 +1,268 @@
+# Example deployment using Redis storage backend for HA forecaster setup
+#
+# This deployment demonstrates:
+# - Redis deployment for persistent forecast storage
+# - Multi-replica forecaster (2 instances) sharing Redis storage
+# - Scaler consuming forecasts from Redis-backed forecaster
+#
+# Prerequisites:
+# - KEDA installed in the cluster
+# - Prometheus accessible from the cluster
+
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-redis
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral-redis
+  template:
+    metadata:
+      labels:
+        app: kedastral-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          tcpSocket:
+            port: 6379
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-redis
+  namespace: default
+spec:
+  selector:
+    app: kedastral-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  type: ClusterIP
+
+---
+# Forecaster Deployment (HA with Redis backend)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+spec:
+  replicas: 2  # Multiple replicas enabled by Redis storage
+  selector:
+    matchLabels:
+      app: kedastral-forecaster
+  template:
+    metadata:
+      labels:
+        app: kedastral-forecaster
+    spec:
+      containers:
+      - name: forecaster
+        image: ghcr.io/haticode/kedastral-forecaster:v0.1.1
+        args:
+        # Storage configuration
+        - --storage=redis
+        - --redis-addr=kedastral-redis:6379
+        - --redis-ttl=1h
+
+        # Workload configuration
+        - --workload=my-api
+        - --metric=http_rps
+
+        # Prometheus configuration
+        - --prom-url=http://prometheus-operated.monitoring:9090
+        - --prom-query=sum(rate(http_requests_total{service="my-api"}[1m]))
+
+        # Forecast parameters
+        - --horizon=30m
+        - --step=1m
+        - --interval=1m
+        - --window=1h
+
+        # Capacity policy
+        - --target-per-pod=100
+        - --headroom=1.2
+        - --min=2
+        - --max=50
+        - --lead-time=5m
+
+        # Logging
+        - --log-level=info
+        - --log-format=json
+
+        env:
+        # Storage configuration via environment variables
+        - name: STORAGE
+          value: "redis"
+        - name: REDIS_ADDR
+          value: "kedastral-redis:6379"
+        - name: REDIS_TTL
+          value: "1h"
+
+        # Optional: Redis password from secret
+        # - name: REDIS_PASSWORD
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: redis-password
+        #       key: password
+
+        ports:
+        - containerPort: 8081
+          name: http
+
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 10
+
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Forecaster Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+spec:
+  selector:
+    app: kedastral-forecaster
+  ports:
+  - port: 8081
+    targetPort: 8081
+    name: http
+  type: ClusterIP
+
+---
+# Scaler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-scaler
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral-scaler
+  template:
+    metadata:
+      labels:
+        app: kedastral-scaler
+    spec:
+      containers:
+      - name: scaler
+        image: ghcr.io/haticode/kedastral-scaler:v0.1.1
+        args:
+        - --forecaster-url=http://kedastral-forecaster:8081
+        - --lead-time=5m
+        - --log-level=info
+        - --log-format=json
+
+        ports:
+        - containerPort: 50051
+          name: grpc
+        - containerPort: 8082
+          name: metrics
+
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+
+        readinessProbe:
+          grpc:
+            port: 50051
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Scaler Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-scaler
+  namespace: default
+spec:
+  selector:
+    app: kedastral-scaler
+  ports:
+  - port: 50051
+    targetPort: 50051
+    name: grpc
+  - port: 8082
+    targetPort: 8082
+    name: metrics
+  type: ClusterIP
+
+---
+# Example ScaledObject for your workload
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-scaledobject
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: my-api  # Your actual deployment name
+  minReplicaCount: 2
+  maxReplicaCount: 50
+  triggers:
+  - type: external
+    metadata:
+      scalerAddress: kedastral-scaler.default.svc.cluster.local:50051
+      workload: my-api

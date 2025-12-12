@@ -25,6 +25,7 @@ Where **KEDA** reacts to what *has already happened*, **Kedastral** predicts *wh
 | 🔮 **Predictive scaling** | Forecast short-term demand and set replica counts ahead of time | ✅ Implemented |
 | ⚙️ **KEDA-native integration** | Implements the official KEDA **External Scaler** gRPC interface | ✅ Implemented |
 | 📈 **Prometheus adapter** | Pull metrics from Prometheus for forecasting | ✅ Implemented |
+| 💾 **Storage backends** | In-memory (default) and Redis for HA deployments | ✅ Implemented |
 | 🧠 **Baseline forecasting model** | Statistical baseline with quantile-based prediction | ✅ Implemented |
 | 🧠 **Built in Go** | Fast, efficient, minimal footprint; deployable as static binaries or containers | ✅ Implemented |
 | 🧱 **Extensible interfaces** | Well-defined interfaces for adapters and models | ✅ Implemented |
@@ -135,6 +136,51 @@ flowchart TD
     E --> F["Target Deployment (User workload)"]
     D -.->|Reactive metrics| B
 ```
+
+---
+
+## 💾 Storage Backends
+
+Kedastral supports two storage backends for forecast snapshots, allowing you to choose between simplicity and high availability:
+
+### In-Memory Storage (Default)
+- **Best for**: Single forecaster instance, development, testing
+- **Pros**: Zero dependencies, fast, simple setup
+- **Cons**: No persistence across restarts, no HA support
+- **Configuration**: `--storage=memory` (default)
+
+```bash
+# Uses in-memory storage by default
+./forecaster --workload=my-api --metric=http_rps
+```
+
+### Redis Storage
+- **Best for**: Multi-instance forecasters, production HA deployments, persistence
+- **Pros**: Shared state across replicas, TTL-based expiration, horizontal scaling
+- **Cons**: Requires Redis server, additional network dependency
+- **Configuration**: `--storage=redis --redis-addr=HOST:PORT`
+
+```bash
+# Using Redis storage
+./forecaster --storage=redis \
+  --redis-addr=redis:6379 \
+  --redis-ttl=1h \
+  --workload=my-api \
+  --metric=http_rps
+```
+
+**Redis Configuration Options:**
+- `--storage=redis` - Enable Redis backend
+- `--redis-addr=HOST:PORT` - Redis server address (default: localhost:6379)
+- `--redis-password=SECRET` - Redis password (optional)
+- `--redis-db=N` - Redis database number (default: 0)
+- `--redis-ttl=DURATION` - Snapshot TTL (default: 30m)
+
+**Example HA Deployment:**
+See [`examples/deployment-redis.yaml`](examples/deployment-redis.yaml) for a complete Kubernetes deployment with:
+- Redis for persistent storage
+- 2+ forecaster replicas sharing Redis
+- Scaler consuming forecasts from HA forecasters
 
 ---
 

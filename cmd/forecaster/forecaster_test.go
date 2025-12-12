@@ -24,7 +24,7 @@ func TestNew(t *testing.T) {
 	model := models.NewBaselineModel("test_metric", 60, 1800)
 	builder := features.NewBuilder()
 	store := storage.NewMemoryStore()
-	policy := capacity.Policy{
+	policy := &capacity.Policy{
 		TargetPerPod: 100,
 		Headroom:     1.2,
 		MinReplicas:  1,
@@ -66,7 +66,7 @@ func TestNew_NilLogger(t *testing.T) {
 	model := models.NewBaselineModel("test", 60, 1800)
 	builder := features.NewBuilder()
 	store := storage.NewMemoryStore()
-	policy := capacity.Policy{MinReplicas: 1}
+	policy := &capacity.Policy{MinReplicas: 1}
 	m := metrics.New("test-nil-logger")
 
 	f := New(
@@ -119,7 +119,7 @@ func TestForecaster_Run_ContextCancellation(t *testing.T) {
 	model := models.NewBaselineModel("test", 60, 1800)
 	builder := features.NewBuilder()
 	store := storage.NewMemoryStore()
-	policy := capacity.Policy{MinReplicas: 1}
+	policy := &capacity.Policy{MinReplicas: 1}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-run-cancel")
 
@@ -156,7 +156,7 @@ func TestForecaster_Run_Timeout(t *testing.T) {
 	model := models.NewBaselineModel("test", 60, 1800)
 	builder := features.NewBuilder()
 	store := storage.NewMemoryStore()
-	policy := capacity.Policy{MinReplicas: 1}
+	policy := &capacity.Policy{MinReplicas: 1}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := metrics.New("test-run-timeout")
 
@@ -184,7 +184,7 @@ func TestForecaster_Run_Timeout(t *testing.T) {
 }
 
 func TestForecaster_CalculateReplicas(t *testing.T) {
-	policy := capacity.Policy{
+	policy := &capacity.Policy{
 		TargetPerPod: 100,
 		Headroom:     1.2,
 		MinReplicas:  1,
@@ -311,7 +311,7 @@ func TestForecaster_Tick_WithMetrics(t *testing.T) {
 	store := storage.NewMemoryStore()
 	builder := features.NewBuilder()
 	model := models.NewBaselineModel("test", 60, 1800)
-	policy := capacity.Policy{
+	policy := &capacity.Policy{
 		TargetPerPod: 100,
 		MinReplicas:  1,
 		MaxReplicas:  10,
@@ -344,7 +344,7 @@ func TestForecaster_Tick_WithoutMetrics(t *testing.T) {
 	store := storage.NewMemoryStore()
 	builder := features.NewBuilder()
 	model := models.NewBaselineModel("test", 60, 1800)
-	policy := capacity.Policy{
+	policy := &capacity.Policy{
 		TargetPerPod: 100,
 		MinReplicas:  1,
 		MaxReplicas:  10,

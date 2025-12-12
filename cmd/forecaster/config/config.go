@@ -1,4 +1,27 @@
-// Package config implements the Kedastral forecaster config.
+// Package config provides configuration parsing and management for the forecaster.
+//
+// It handles both command-line flags and environment variables, with flags taking
+// precedence over environment variables. The Config struct contains all runtime
+// configuration for the forecaster including:
+//   - Workload identification (workload name, metric name)
+//   - Forecast parameters (horizon, step, lead time)
+//   - Capacity planning policy (target per pod, headroom, min/max replicas)
+//   - Prometheus adapter settings (URL, query)
+//   - Timing configuration (interval, window)
+//   - Logging configuration (level, format)
+//
+// Required configuration values (workload, metric, prom-query) are validated
+// and the program exits with status 1 if they are missing.
+//
+// Supported configuration sources (in order of precedence):
+//  1. Command-line flags
+//  2. Environment variables
+//  3. Default values
+//
+// Example usage:
+//
+//	cfg := config.ParseFlags()
+//	// cfg now contains validated configuration
 package config
 
 import (
@@ -28,6 +51,11 @@ type Config struct {
 	Window                time.Duration
 	LogFormat             string
 	LogLevel              string
+	Storage               string
+	RedisAddr             string
+	RedisPassword         string
+	RedisDB               int
+	RedisTTL              time.Duration
 }
 
 // ParseFlags parses command-line flags and environment variables into a Config.
@@ -67,6 +95,13 @@ func ParseFlags() *Config {
 	// Logging
 	flag.StringVar(&cfg.LogFormat, "log-format", getEnv("LOG_FORMAT", "text"), "Log format: text or json")
 	flag.StringVar(&cfg.LogLevel, "log-level", getEnv("LOG_LEVEL", "info"), "Log level: debug, info, warn, error")
+
+	// Storage backend
+	flag.StringVar(&cfg.Storage, "storage", getEnv("STORAGE", "memory"), "Storage backend: memory or redis")
+	flag.StringVar(&cfg.RedisAddr, "redis-addr", getEnv("REDIS_ADDR", "localhost:6379"), "Redis server address")
+	flag.StringVar(&cfg.RedisPassword, "redis-password", getEnv("REDIS_PASSWORD", ""), "Redis password (optional)")
+	flag.IntVar(&cfg.RedisDB, "redis-db", getEnvInt("REDIS_DB", 0), "Redis database number")
+	flag.DurationVar(&cfg.RedisTTL, "redis-ttl", getEnvDuration("REDIS_TTL", 30*time.Minute), "Redis snapshot TTL")
 
 	flag.Parse()
 

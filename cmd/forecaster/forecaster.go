@@ -1,6 +1,16 @@
-// Package main implements the Kedastral forecaster service.
-// The forecaster collects metrics, predicts future workload, calculates desired replicas,
-// and serves forecast snapshots via HTTP API.
+// Package main implements the core forecast loop orchestration.
+//
+// This file contains the Forecaster type which orchestrates the forecast pipeline:
+//
+//	collect → buildFeatures → predict → calculateReplicas → storeSnapshot
+//
+// The Forecaster runs continuously via Run(), executing Tick() at regular intervals.
+// Each tick performs one complete forecast cycle, updating the stored snapshot that
+// the scaler consumes via HTTP API.
+//
+// The forecast loop is instrumented with Prometheus metrics tracking the duration
+// of each pipeline stage (collect, predict, capacity planning) and any errors
+// encountered during execution.
 package main
 
 import (
@@ -24,14 +34,12 @@ type Forecaster struct {
 	model    models.Model
 	builder  *features.Builder
 	store    storage.Store
-	policy   capacity.Policy
+	policy   *capacity.Policy
 	horizon  time.Duration
 	step     time.Duration
 	window   time.Duration
 	logger   *slog.Logger
 	metrics  *metrics.Metrics
-
-	// Track current state for replicas calculation
 	currentReplicas int
 }
 
@@ -42,7 +50,7 @@ func New(
 	model models.Model,
 	builder *features.Builder,
 	store storage.Store,
-	policy capacity.Policy,
+	policy *capacity.Policy,
 	horizon, step, window time.Duration,
 	logger *slog.Logger,
 	metrics *metrics.Metrics,
@@ -220,7 +228,7 @@ func (f *Forecaster) calculateReplicas(values []float64) ([]int, time.Duration) 
 		f.currentReplicas,
 		values,
 		int(f.step.Seconds()),
-		f.policy,
+		*f.policy,
 	)
 
 	if len(desiredReplicas) > 0 {

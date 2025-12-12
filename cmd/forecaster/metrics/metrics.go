@@ -1,4 +1,19 @@
-// Package metrics provides Prometheus instrumentation for the forecaster.
+// Package metrics provides Prometheus metrics instrumentation for the forecaster.
+//
+// It exposes operational metrics about the forecaster's pipeline performance,
+// including the duration of each stage (collect, predict, capacity planning),
+// the age and state of forecasts, and error tracking. All metrics are exposed
+// via the /metrics HTTP endpoint for Prometheus scraping.
+//
+// Metrics exposed:
+//   - kedastral_adapter_collect_seconds: Histogram of metric collection duration
+//   - kedastral_model_predict_seconds: Histogram of forecast prediction duration
+//   - kedastral_capacity_compute_seconds: Histogram of capacity planning duration
+//   - kedastral_forecast_age_seconds: Gauge of current forecast age
+//   - kedastral_desired_replicas: Gauge of current desired replica count
+//   - kedastral_errors_total: Counter of errors by component and reason
+//
+// All metrics include the workload label for multi-workload deployments.
 package metrics
 
 import (

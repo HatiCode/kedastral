@@ -1,4 +1,18 @@
-// Package forecaster provides the core forecast loop orchestration.
+// Package router configures HTTP routes for the forecaster's HTTP API.
+//
+// The forecaster exposes an HTTP server on port 8081 (configurable) that provides
+// forecast snapshot retrieval, health checks, and Prometheus metrics. This package
+// sets up the routes for that HTTP server.
+//
+// Routes configured:
+//   - GET /forecast/current?workload=<name> - Retrieve latest forecast snapshot
+//   - GET /healthz - Health check endpoint (returns 200 OK)
+//   - GET /metrics - Prometheus metrics endpoint
+//
+// The /forecast/current endpoint returns forecast snapshots in JSON format as
+// specified in SPEC.md §3.1, including forecast values, desired replica counts,
+// and metadata (generated timestamp, step size, horizon). Snapshots older than
+// the stale threshold include an X-Kedastral-Stale header.
 package router
 
 import (

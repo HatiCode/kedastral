@@ -1,3 +1,12 @@
+// Package logger provides structured logging configuration for the forecaster.
+//
+// It creates slog.Logger instances configured according to the forecaster's Config,
+// supporting both text and JSON output formats, and configurable log levels
+// (debug, info, warn, error).
+//
+// The logger uses Go's standard library slog package for structured logging,
+// ensuring consistent log output across the forecaster service. All logs are
+// written to stdout for container-friendly log collection.
 package logger
 
 import (
