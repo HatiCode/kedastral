@@ -2,8 +2,9 @@
 
 > **Kedastral** — *Predict tomorrow's load, scale today.*
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/HatiCode/kedastral.svg)](https://pkg.go.dev/github.com/HatiCode/kedastral)
-[![Go Report Card](https://goreportcard.com/badge/github.com/HatiCode/kedastral)](https://goreportcard.com/report/github.com/HatiCode/kedastral)
+[![Release](https://img.shields.io/github/v/release/kedastral/kedastral?color=blue)](https://github.com/kedastral/kedastral/releases/latest)
+[![Go Reference](https://pkg.go.dev/badge/github.com/kedastral/kedastral.svg)](https://pkg.go.dev/github.com/kedastral/kedastral)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kedastral/kedastral)](https://goreportcard.com/report/github.com/kedastral/kedastral)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 ---
