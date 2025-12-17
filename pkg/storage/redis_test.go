@@ -317,12 +317,12 @@ func TestRedisStore_Concurrency_MultiplePuts(t *testing.T) {
 	numGoroutines := 10
 	numPutsPerGoroutine := 10
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(goroutineID int) {
 			defer wg.Done()
 
-			for j := 0; j < numPutsPerGoroutine; j++ {
+			for j := range numPutsPerGoroutine {
 				snapshot := Snapshot{
 					Workload:        fmt.Sprintf("workload-%d-%d", goroutineID, j),
 					Metric:          "http_rps",
@@ -343,8 +343,8 @@ func TestRedisStore_Concurrency_MultiplePuts(t *testing.T) {
 	wg.Wait()
 
 	// Verify all snapshots were stored
-	for i := 0; i < numGoroutines; i++ {
-		for j := 0; j < numPutsPerGoroutine; j++ {
+	for i := range numGoroutines {
+		for j := range numPutsPerGoroutine {
 			workload := fmt.Sprintf("workload-%d-%d", i, j)
 			_, found, err := store.GetLatest(workload)
 			if err != nil {
@@ -367,7 +367,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 	defer store.Close()
 
 	// Pre-populate with some snapshots
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		snapshot := Snapshot{
 			Workload:        fmt.Sprintf("workload-%d", i),
 			Metric:          "http_rps",
@@ -387,7 +387,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 	done := make(chan struct{})
 
 	// Writers
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(1)
 		go func(writerID int) {
 			defer wg.Done()
@@ -416,7 +416,7 @@ func TestRedisStore_Concurrency_ReadWrite(t *testing.T) {
 	}
 
 	// Readers
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(1)
 		go func(readerID int) {
 			defer wg.Done()

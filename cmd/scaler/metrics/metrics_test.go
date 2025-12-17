@@ -110,7 +110,7 @@ func TestMetrics_MultipleObservations(t *testing.T) {
 	m := testMetrics
 
 	// Record multiple observations
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		m.RecordGRPCRequest("GetMetrics", "success")
 		m.ObserveGRPCDuration("GetMetrics", 0.1)
 		m.ObserveForecastFetch(0.2)

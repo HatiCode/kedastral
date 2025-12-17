@@ -1,0 +1,228 @@
+# ARIMA Forecaster Deployment Example
+# This example demonstrates using Kedastral with the ARIMA forecasting model
+# for workloads with trending or seasonal patterns.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+    model: arima
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8081
+    targetPort: 8081
+    protocol: TCP
+    name: http
+  selector:
+    app: kedastral
+    component: forecaster
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-forecaster
+  namespace: default
+  labels:
+    app: kedastral
+    component: forecaster
+    model: arima
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: forecaster
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: forecaster
+        model: arima
+    spec:
+      containers:
+      - name: forecaster
+        image: kedastral/forecaster:v0.1.2
+        imagePullPolicy: IfNotPresent
+        args:
+        # Workload identification
+        - --workload=my-api
+        - --metric=http_rps
+        
+        # Model selection (ARIMA)
+        - --model=arima
+        - --arima-p=2      # AR order (use 2 past values)
+        - --arima-d=1      # Single differencing (linear trend)
+        - --arima-q=1      # MA order (use 1 past error)
+        
+        # Prometheus source
+        - --prom-url=http://prometheus:9090
+        - --prom-query=sum(rate(http_requests_total{job="my-api"}[1m]))
+        
+        # Forecast parameters
+        - --horizon=30m
+        - --step=1m
+        - --lead-time=5m
+        - --window=60m     # Longer window for ARIMA training
+        - --interval=1m    # More frequent updates for better training
+        
+        # Capacity policy
+        - --target-per-pod=100
+        - --headroom=1.2
+        - --min=2
+        - --max=50
+        - --up-max-factor=2.0
+        - --down-max-percent=50
+        
+        # Storage (use memory for single instance, Redis for HA)
+        - --storage=memory
+        
+        # Logging
+        - --log-level=info
+        - --log-format=json
+        
+        env:
+        # Alternative: configure via environment variables
+        - name: MODEL
+          value: "arima"
+        - name: ARIMA_P
+          value: "2"
+        - name: ARIMA_D
+          value: "1"
+        - name: ARIMA_Q
+          value: "1"
+        
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        
+        resources:
+          requests:
+            memory: "128Mi"  # ARIMA needs slightly more memory than baseline
+            cpu: "100m"      # More CPU for training
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 30  # Allow time for initial ARIMA training
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+---
+# Scaler deployment (same as baseline example)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+    name: grpc
+  selector:
+    app: kedastral
+    component: scaler
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kedastral-scaler
+  namespace: default
+  labels:
+    app: kedastral
+    component: scaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kedastral
+      component: scaler
+  template:
+    metadata:
+      labels:
+        app: kedastral
+        component: scaler
+    spec:
+      containers:
+      - name: scaler
+        image: kedastral/scaler:v0.1.2
+        imagePullPolicy: IfNotPresent
+        args:
+        - --forecaster-url=http://kedastral-forecaster:8081
+        - --default-min=2
+        - --stale-after=120s
+        - --log-level=info
+        
+        ports:
+        - name: grpc
+          containerPort: 8080
+          protocol: TCP
+        
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# KEDA ScaledObject pointing to the Kedastral scaler
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: my-api-kedastral
+  namespace: default
+spec:
+  scaleTargetRef:
+    name: my-api
+  minReplicaCount: 2
+  maxReplicaCount: 50
+  pollingInterval: 30
+  cooldownPeriod: 300
+  
+  triggers:
+  - type: external
+    metadata:
+      scalerAddress: kedastral-scaler.default.svc.cluster.local:8080
+      workload: my-api
+      metric: http_rps

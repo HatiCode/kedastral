@@ -196,7 +196,7 @@ func TestMetrics_MultipleObservations(t *testing.T) {
 	m := New("test-metrics-multiple-observations")
 
 	// Record multiple observations
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		m.RecordCollect(0.1)
 		m.RecordPredict(0.2)
 		m.RecordCapacity(0.01)

@@ -56,6 +56,10 @@ type Config struct {
 	RedisPassword         string
 	RedisDB               int
 	RedisTTL              time.Duration
+	Model                 string
+	ARIMA_P               int
+	ARIMA_D               int
+	ARIMA_Q               int
 }
 
 // ParseFlags parses command-line flags and environment variables into a Config.
@@ -102,6 +106,12 @@ func ParseFlags() *Config {
 	flag.StringVar(&cfg.RedisPassword, "redis-password", getEnv("REDIS_PASSWORD", ""), "Redis password (optional)")
 	flag.IntVar(&cfg.RedisDB, "redis-db", getEnvInt("REDIS_DB", 0), "Redis database number")
 	flag.DurationVar(&cfg.RedisTTL, "redis-ttl", getEnvDuration("REDIS_TTL", 30*time.Minute), "Redis snapshot TTL")
+
+	// Model selection
+	flag.StringVar(&cfg.Model, "model", getEnv("MODEL", "baseline"), "Forecasting model: baseline or arima")
+	flag.IntVar(&cfg.ARIMA_P, "arima-p", getEnvInt("ARIMA_P", 0), "ARIMA AR order (0=auto, default 1)")
+	flag.IntVar(&cfg.ARIMA_D, "arima-d", getEnvInt("ARIMA_D", 0), "ARIMA differencing order (0=auto, default 1)")
+	flag.IntVar(&cfg.ARIMA_Q, "arima-q", getEnvInt("ARIMA_Q", 0), "ARIMA MA order (0=auto, default 1)")
 
 	flag.Parse()
 

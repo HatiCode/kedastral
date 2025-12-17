@@ -141,11 +141,7 @@ func (r *RedisStore) Close() error {
 	}
 
 	err := r.client.Close()
-	// Set client to nil to prevent future close attempts
 	r.client = nil
-
-	// Redis client returns an error if already closed, but we want idempotent behavior
-	// So we ignore "client is closed" errors
 	if err != nil && err.Error() == "redis: client is closed" {
 		return nil
 	}

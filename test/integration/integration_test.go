@@ -172,7 +172,7 @@ with socketserver.TCPServer(("", PORT), PrometheusHandler) as httpd:
 		t.Fatalf("Forecaster returned non-OK status: %d", resp.StatusCode)
 	}
 
-	var forecastCheck map[string]interface{}
+	var forecastCheck map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&forecastCheck); err != nil {
 		t.Fatalf("Failed to decode forecast: %v", err)
 	}

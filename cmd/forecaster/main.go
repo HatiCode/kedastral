@@ -50,13 +50,13 @@ import (
 	"github.com/HatiCode/kedastral/cmd/forecaster/config"
 	"github.com/HatiCode/kedastral/cmd/forecaster/logger"
 	"github.com/HatiCode/kedastral/cmd/forecaster/metrics"
+	"github.com/HatiCode/kedastral/cmd/forecaster/models"
 	"github.com/HatiCode/kedastral/cmd/forecaster/router"
 	"github.com/HatiCode/kedastral/cmd/forecaster/store"
 	"github.com/HatiCode/kedastral/pkg/adapters"
 	"github.com/HatiCode/kedastral/pkg/capacity"
 	"github.com/HatiCode/kedastral/pkg/features"
 	"github.com/HatiCode/kedastral/pkg/httpx"
-	"github.com/HatiCode/kedastral/pkg/models"
 )
 
 // version is set via ldflags at build time
@@ -79,15 +79,12 @@ func main() {
 		Query:       cfg.PromQuery,
 		StepSeconds: int(cfg.Step.Seconds()),
 	}
-	model := models.NewBaselineModel(
-		cfg.Metric,
-		int(cfg.Step.Seconds()),
-		int(cfg.Horizon.Seconds()),
-	)
+
+	model := models.New(cfg, logger)
+
 	builder := features.NewBuilder()
 
 	store := store.New(cfg, logger)
-	// Close store on shutdown if it supports Close (e.g., RedisStore)
 	if closer, ok := store.(interface{ Close() error }); ok {
 		defer func() {
 			if err := closer.Close(); err != nil {
