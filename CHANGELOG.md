@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2025-12-17
+
+### Added
+
+- **ARIMA Forecasting Model**: Added ARIMA (AutoRegressive Integrated Moving Average) as an alternative forecasting model for workloads with trends and seasonality
+  - Pure Go implementation of ARIMA(p,d,q) algorithm with Yule-Walker equations and Levinson-Durbin solver
+  - New `pkg/models/arima.go` implementing the Model interface with training and prediction capabilities
+  - Comprehensive test suite with 16 tests covering constant, linear, seasonal, and complex time series patterns
+  - Benchmark tests showing ~15μs training time per 1K points and <1μs prediction for 30 steps
+  - Configurable ARIMA orders via `--arima-p`, `--arima-d`, `--arima-q` flags with auto-detection (defaults to 1,1,1)
+  - Thread-safe concurrent predictions using sync.RWMutex
+  - Numerical stability handling for edge cases (constant series, zero variance)
+  - Non-negativity constraints and dampened multi-step predictions
+- Model selection framework with `--model` flag supporting `baseline` (default) and `arima`
+- Model factory pattern in forecaster for dynamic model instantiation
+- ARIMA deployment example in `examples/deployment-arima.yaml` with recommended configuration
+- Comprehensive model selection guide in `docs/model-selection.md` covering:
+  - When to use each model (baseline vs ARIMA)
+  - ARIMA parameter tuning guidelines (p, d, q explained)
+  - Performance benchmarks and accuracy comparisons
+  - Troubleshooting guide and best practices
+- Security audit documentation in `docs/SECURITY_AUDIT.md` with 18 identified findings
+
+### Changed
+
+- Updated README.md with forecasting models comparison table
+- Model initialization now uses factory pattern for extensibility
+- Forecaster configuration extended with model selection parameters
+- Enhanced logging for model initialization with parameter details
+
+### Security
+
+- Added GitHub Actions workflow for gosec security scanning
+  - Automated SARIF report upload to GitHub Code Scanning
+  - Configured to exclude auto-generated protobuf files
+  - Runs on push and weekly schedule
+- Added workflow permissions for security events and code scanning
+- Documented 18 security findings (3 critical, 4 high, 6 medium, 5 low) for future remediation
+
+### Documentation
+
+- Added detailed ARIMA implementation documentation
+- Created comprehensive model selection and tuning guide
+- Added ARIMA deployment example with resource requirements
+- Documented model comparison (algorithm, training, accuracy, use cases)
+- Added benchmark results for ARIMA training and prediction performance
+
+### Performance
+
+- ARIMA training: ~15μs per 1000 data points
+- ARIMA prediction: <1μs for 30-step forecast
+- Memory overhead: ~5MB for ARIMA vs ~1MB for baseline
+- All unit tests and benchmarks passing
+
 ## [0.1.1] - 2025-12-12
 
 ### Added
@@ -60,5 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Kubernetes deployment examples
 - Documentation and getting started guide
 
-[0.1.1]: https://github.com/HatiCode/kedastral/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/HatiCode/kedastral/releases/tag/v0.1.0
+[0.1.2]: https://github.com/kedastral/kedastral/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/kedastral/kedastral/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/kedastral/kedastral/releases/tag/v0.1.0
