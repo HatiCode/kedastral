@@ -198,7 +198,9 @@ func TestScaler_IsActive_Success(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(snapshot)
+		if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+			t.Errorf("failed to encode snapshot: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -236,7 +238,9 @@ func TestScaler_IsActive_Stale(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(snapshot)
+		if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+			t.Errorf("failed to encode snapshot: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -332,7 +336,9 @@ func TestScaler_GetMetrics_Success(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(snapshot)
+		if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+			t.Errorf("failed to encode snapshot: %v", err)
+		}
 	}))
 	defer server.Close()
 

@@ -23,6 +23,7 @@ func NewBuilder() *Builder {
 //   - value: the metric value (required)
 //   - timestamp: Unix timestamp in seconds (extracted from "ts" field if present)
 //   - hour: hour of day (0-23) extracted from timestamp
+//   - minute: minute of hour (0-59) extracted from timestamp
 //   - day: day of week (0-6, Sunday=0) extracted from timestamp
 //
 // Rows without a "value" field are skipped.
@@ -55,6 +56,7 @@ func (b *Builder) BuildFeatures(df adapters.DataFrame) (models.FeatureFrame, err
 
 				// Extract time-based features
 				features["hour"] = float64(timestamp.Hour())
+				features["minute"] = float64(timestamp.Minute())
 				features["day"] = float64(timestamp.Weekday())
 			}
 		}

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"testing"
@@ -48,35 +49,35 @@ func TestNew_LogLevels(t *testing.T) {
 			name:     "debug level",
 			logLevel: "debug",
 			wantFunc: func(l *slog.Logger) bool {
-				return l.Enabled(nil, slog.LevelDebug)
+				return l.Enabled(context.TODO(), slog.LevelDebug)
 			},
 		},
 		{
 			name:     "info level",
 			logLevel: "info",
 			wantFunc: func(l *slog.Logger) bool {
-				return l.Enabled(nil, slog.LevelInfo) && !l.Enabled(nil, slog.LevelDebug)
+				return l.Enabled(context.TODO(), slog.LevelInfo) && !l.Enabled(context.TODO(), slog.LevelDebug)
 			},
 		},
 		{
 			name:     "warn level",
 			logLevel: "warn",
 			wantFunc: func(l *slog.Logger) bool {
-				return l.Enabled(nil, slog.LevelWarn) && !l.Enabled(nil, slog.LevelInfo)
+				return l.Enabled(context.TODO(), slog.LevelWarn) && !l.Enabled(context.TODO(), slog.LevelInfo)
 			},
 		},
 		{
 			name:     "error level",
 			logLevel: "error",
 			wantFunc: func(l *slog.Logger) bool {
-				return l.Enabled(nil, slog.LevelError) && !l.Enabled(nil, slog.LevelWarn)
+				return l.Enabled(context.TODO(), slog.LevelError) && !l.Enabled(context.TODO(), slog.LevelWarn)
 			},
 		},
 		{
 			name:     "invalid level defaults to info",
 			logLevel: "invalid",
 			wantFunc: func(l *slog.Logger) bool {
-				return l.Enabled(nil, slog.LevelInfo) && !l.Enabled(nil, slog.LevelDebug)
+				return l.Enabled(context.TODO(), slog.LevelInfo) && !l.Enabled(context.TODO(), slog.LevelDebug)
 			},
 		},
 	}
@@ -105,10 +106,10 @@ func TestNew_EmptyLogLevel(t *testing.T) {
 	logger := New(cfg)
 
 	// Should default to info level
-	if !logger.Enabled(nil, slog.LevelInfo) {
+	if !logger.Enabled(context.TODO(), slog.LevelInfo) {
 		t.Error("expected default level to be info")
 	}
-	if logger.Enabled(nil, slog.LevelDebug) {
+	if logger.Enabled(context.TODO(), slog.LevelDebug) {
 		t.Error("expected debug to be disabled at info level")
 	}
 }

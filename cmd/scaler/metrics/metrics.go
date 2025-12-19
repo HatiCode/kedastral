@@ -19,12 +19,12 @@ import (
 )
 
 type Metrics struct {
-	GRPCRequestsTotal      *prometheus.CounterVec
-	GRPCRequestDuration    *prometheus.HistogramVec
-	ForecastFetchDuration  prometheus.Histogram
-	ForecastFetchErrors    prometheus.Counter
+	GRPCRequestsTotal       *prometheus.CounterVec
+	GRPCRequestDuration     *prometheus.HistogramVec
+	ForecastFetchDuration   prometheus.Histogram
+	ForecastFetchErrors     prometheus.Counter
 	DesiredReplicasReturned prometheus.Gauge
-	ForecastAgeSeen        prometheus.Gauge
+	ForecastAgeSeen         prometheus.Gauge
 }
 
 func New() *Metrics {

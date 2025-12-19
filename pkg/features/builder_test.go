@@ -151,9 +151,9 @@ func TestBuilder_BuildFeatures_MixedRows(t *testing.T) {
 	df := adapters.DataFrame{
 		Rows: []adapters.Row{
 			{"value": 100.0, "ts": "2024-01-01T00:00:00Z"},
-			{"other": "no value"},                              // Skipped
+			{"other": "no value"}, // Skipped
 			{"value": 110.0, "ts": "2024-01-01T00:01:00Z"},
-			{"value": "invalid"},                               // Skipped
+			{"value": "invalid"}, // Skipped
 			{"value": 120.0, "ts": "2024-01-01T00:02:00Z"},
 		},
 	}
@@ -374,24 +374,24 @@ func TestBuilder_BuildFeatures_TimeFeatures(t *testing.T) {
 
 	// Test different hours and days
 	testCases := []struct {
-		time      time.Time
-		wantHour  float64
-		wantDay   float64
+		time     time.Time
+		wantHour float64
+		wantDay  float64
 	}{
 		{
-			time:      time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC),  // Monday midnight
-			wantHour:  0,
-			wantDay:   1, // Monday
+			time:     time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC), // Monday midnight
+			wantHour: 0,
+			wantDay:  1, // Monday
 		},
 		{
-			time:      time.Date(2024, 1, 14, 23, 59, 0, 0, time.UTC), // Sunday 23:59
-			wantHour:  23,
-			wantDay:   0, // Sunday
+			time:     time.Date(2024, 1, 14, 23, 59, 0, 0, time.UTC), // Sunday 23:59
+			wantHour: 23,
+			wantDay:  0, // Sunday
 		},
 		{
-			time:      time.Date(2024, 1, 20, 12, 30, 0, 0, time.UTC), // Saturday noon
-			wantHour:  12,
-			wantDay:   6, // Saturday
+			time:     time.Date(2024, 1, 20, 12, 30, 0, 0, time.UTC), // Saturday noon
+			wantHour: 12,
+			wantDay:  6, // Saturday
 		},
 	}
 

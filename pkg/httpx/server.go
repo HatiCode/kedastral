@@ -92,7 +92,9 @@ func WriteError(w http.ResponseWriter, status int, err error) {
 	resp := ErrorResponse{
 		Error: err.Error(),
 	}
-	WriteJSON(w, status, resp)
+	if jsonErr := WriteJSON(w, status, resp); jsonErr != nil {
+		slog.Error("failed to write error response", "error", jsonErr, "original_error", err)
+	}
 }
 
 // WriteErrorMessage writes a JSON error response with a custom message.
@@ -100,7 +102,9 @@ func WriteErrorMessage(w http.ResponseWriter, status int, message string) {
 	resp := ErrorResponse{
 		Error: message,
 	}
-	WriteJSON(w, status, resp)
+	if err := WriteJSON(w, status, resp); err != nil {
+		slog.Error("failed to write error message", "error", err, "message", message)
+	}
 }
 
 // HealthHandler returns an http.Handler that always responds with 200 OK.
@@ -110,7 +114,9 @@ func WriteErrorMessage(w http.ResponseWriter, status int, message string) {
 func HealthHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			slog.Error("failed to write health response", "error", err)
+		}
 	}
 }
 
@@ -124,7 +130,9 @@ func HealthHandlerWithCheck(check func() error) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			slog.Error("failed to write health response", "error", err)
+		}
 	}
 }
 

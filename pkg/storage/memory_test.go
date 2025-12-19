@@ -352,7 +352,9 @@ func TestMemoryStore_Len(t *testing.T) {
 			Workload: string(rune('a' + i - 1)),
 			Metric:   "test",
 		}
-		store.Put(snapshot)
+		if err := store.Put(snapshot); err != nil {
+			t.Fatalf("Put() error = %v", err)
+		}
 
 		if store.Len() != i {
 			t.Errorf("Len() = %d after %d puts, want %d", store.Len(), i, i)
@@ -408,7 +410,9 @@ func TestMemoryStoreWithTTL_MultipleSnapshots(t *testing.T) {
 		GeneratedAt: time.Now().Add(-300 * time.Millisecond), // Already expired
 		Metric:      "http_rps",
 	}
-	store.Put(oldSnapshot)
+	if err := store.Put(oldSnapshot); err != nil {
+		t.Fatalf("Put(oldSnapshot) error = %v", err)
+	}
 
 	// Add fresh snapshot
 	freshSnapshot := Snapshot{
@@ -416,7 +420,9 @@ func TestMemoryStoreWithTTL_MultipleSnapshots(t *testing.T) {
 		GeneratedAt: time.Now(),
 		Metric:      "http_rps",
 	}
-	store.Put(freshSnapshot)
+	if err := store.Put(freshSnapshot); err != nil {
+		t.Fatalf("Put(freshSnapshot) error = %v", err)
+	}
 
 	// Wait for cleanup to run
 	time.Sleep(cleanupInterval + 50*time.Millisecond)
@@ -442,10 +448,12 @@ func TestMemoryStoreWithTTL_Stop(t *testing.T) {
 	store := NewMemoryStoreWithTTL(time.Minute, time.Second)
 
 	// Add a snapshot
-	store.Put(Snapshot{
+	if err := store.Put(Snapshot{
 		Workload:    "test",
 		GeneratedAt: time.Now(),
-	})
+	}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
 
 	// Stop should complete without hanging
 	done := make(chan struct{})
@@ -509,21 +517,25 @@ func TestMemoryStoreWithTTL_UpdateResetsTTL(t *testing.T) {
 	workload := "update-ttl-test"
 
 	// Add initial snapshot with old timestamp (will expire)
-	store.Put(Snapshot{
+	if err := store.Put(Snapshot{
 		Workload:        workload,
 		GeneratedAt:     time.Now().Add(-250 * time.Millisecond),
 		DesiredReplicas: []int{1},
-	})
+	}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
 
 	// Wait for cleanup to potentially run
 	time.Sleep(cleanupInterval + 20*time.Millisecond)
 
 	// Update snapshot with fresh timestamp
-	store.Put(Snapshot{
+	if err := store.Put(Snapshot{
 		Workload:        workload,
 		GeneratedAt:     time.Now(),
 		DesiredReplicas: []int{2},
-	})
+	}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
 
 	// Wait a bit (less than TTL)
 	time.Sleep(cleanupInterval + 20*time.Millisecond)
@@ -556,14 +568,18 @@ func TestMemoryStoreWithTTL_ConcurrentWithCleanup(t *testing.T) {
 
 			for range 20 {
 				// Put fresh snapshots
-				store.Put(Snapshot{
+				if err := store.Put(Snapshot{
 					Workload:    workload,
 					GeneratedAt: time.Now(),
 					Metric:      "test",
-				})
+				}); err != nil {
+					t.Errorf("Put(%s) error = %v", workload, err)
+				}
 
 				// Read
-				store.GetLatest(workload)
+				if _, _, err := store.GetLatest(workload); err != nil {
+					t.Errorf("GetLatest(%s) error = %v", workload, err)
+				}
 
 				time.Sleep(10 * time.Millisecond)
 			}
@@ -586,10 +602,12 @@ func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 
 	// Pre-populate
 	for _, w := range workloads {
-		store.Put(Snapshot{
+		if err := store.Put(Snapshot{
 			Workload:        w,
 			DesiredReplicas: []int{1, 2, 3},
-		})
+		}); err != nil {
+			b.Fatalf("Put() error = %v", err)
+		}
 	}
 
 	b.ResetTimer()
@@ -599,13 +617,19 @@ func BenchmarkMemoryStore_ConcurrentAccess(b *testing.B) {
 			workload := workloads[i%len(workloads)]
 			if i%2 == 0 {
 				// Write
-				store.Put(Snapshot{
+				if err := store.Put(Snapshot{
 					Workload:        workload,
 					DesiredReplicas: []int{i},
-				})
+				}); err != nil {
+					// Ignore errors in benchmark
+					_ = err
+				}
 			} else {
 				// Read
-				store.GetLatest(workload)
+				if _, _, err := store.GetLatest(workload); err != nil {
+					// Ignore errors in benchmark
+					_ = err
+				}
 			}
 			i++
 		}

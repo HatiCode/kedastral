@@ -29,17 +29,17 @@ import (
 
 // Forecaster orchestrates the forecast loop: collect → predict → plan → store.
 type Forecaster struct {
-	workload string
-	adapter  adapters.Adapter
-	model    models.Model
-	builder  *features.Builder
-	store    storage.Store
-	policy   *capacity.Policy
-	horizon  time.Duration
-	step     time.Duration
-	window   time.Duration
-	logger   *slog.Logger
-	metrics  *metrics.Metrics
+	workload        string
+	adapter         adapters.Adapter
+	model           models.Model
+	builder         *features.Builder
+	store           storage.Store
+	policy          *capacity.Policy
+	horizon         time.Duration
+	step            time.Duration
+	window          time.Duration
+	logger          *slog.Logger
+	metrics         *metrics.Metrics
 	currentReplicas int
 }
 
@@ -120,6 +120,12 @@ func (f *Forecaster) Tick(ctx context.Context) error {
 			f.metrics.RecordError("features", "build_failed")
 		}
 		return fmt.Errorf("build features: %w", err)
+	}
+
+	// Train the model on historical data to learn patterns
+	if err := f.model.Train(ctx, featureFrame); err != nil {
+		f.logger.Debug("model training skipped or failed", "error", err)
+		// Training is optional for some models (e.g., baseline), so we don't fail here
 	}
 
 	forecast, predictDuration, err := f.predict(ctx, featureFrame)

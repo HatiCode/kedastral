@@ -58,7 +58,9 @@ func TestServer_StartStop(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -98,7 +100,9 @@ func TestServer_Stop_Timeout(t *testing.T) {
 	server := NewServer("localhost:0", mux, logger)
 
 	go func() {
-		server.Start()
+		if err := server.Start(); err != nil {
+			t.Logf("server.Start() error: %v", err)
+		}
 	}()
 
 	time.Sleep(50 * time.Millisecond)
@@ -307,7 +311,9 @@ func TestLoggingMiddleware(t *testing.T) {
 	// Test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test"))
+		if _, err := w.Write([]byte("test")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	// Wrap with logging middleware
@@ -472,7 +478,9 @@ func TestRecoveryMiddleware_NormalRequest(t *testing.T) {
 	// Normal handler that doesn't panic
 	normalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		if _, err := w.Write([]byte("success")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	middleware := RecoveryMiddleware(logger)
@@ -506,7 +514,9 @@ func TestMiddlewareChaining(t *testing.T) {
 	// Test handler
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		if _, err := w.Write([]byte("ok")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	// Chain logging and recovery middleware
@@ -552,7 +562,9 @@ func TestResponseWriter_DefaultStatusCode(t *testing.T) {
 
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Don't call WriteHeader explicitly
-		w.Write([]byte("test"))
+		if _, err := w.Write([]byte("test")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	})
 
 	middleware := LoggingMiddleware(logger)
@@ -582,7 +594,9 @@ func TestServer_Integration(t *testing.T) {
 
 	// Add test endpoint
 	mux.HandleFunc("/api/test", func(w http.ResponseWriter, r *http.Request) {
-		WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		if err := WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("WriteJSON failed: %v", err)
+		}
 	})
 
 	// Add error endpoint

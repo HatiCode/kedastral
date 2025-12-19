@@ -29,16 +29,21 @@ type BaselineModel struct {
 	// seasonality stores hour-of-day means if available
 	// map key is hour (0-23), value is mean for that hour
 	seasonality map[int]float64
+
+	// minuteSeasonality stores minute-of-hour means for finer-grained patterns
+	// map key is minute (0-59), value is mean for that minute
+	minuteSeasonality map[int]float64
 }
 
 // NewBaselineModel creates a new baseline forecasting model.
 // The model uses EMA-based forecasting with optional seasonality.
 func NewBaselineModel(metric string, stepSec, horizon int) *BaselineModel {
 	return &BaselineModel{
-		metric:      metric,
-		stepSec:     stepSec,
-		horizon:     horizon,
-		seasonality: make(map[int]float64),
+		metric:            metric,
+		stepSec:           stepSec,
+		horizon:           horizon,
+		seasonality:       make(map[int]float64),
+		minuteSeasonality: make(map[int]float64),
 	}
 }
 
@@ -48,7 +53,7 @@ func (m *BaselineModel) Name() string {
 }
 
 // Train extracts seasonality patterns from historical data.
-// For the baseline model, this computes hour-of-day means if sufficient data exists.
+// For the baseline model, this computes hour-of-day and minute-of-hour means if sufficient data exists.
 // Returns nil (training is optional for baseline).
 func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 	if len(history.Rows) == 0 {
@@ -57,10 +62,13 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 
 	hourSums := make(map[int]float64)
 	hourCounts := make(map[int]int)
+	minuteSums := make(map[int]float64)
+	minuteCounts := make(map[int]int)
 
 	for _, row := range history.Rows {
 		value, hasValue := row["value"]
 		hour, hasHour := row["hour"]
+		minute, hasMinute := row["minute"]
 
 		if hasValue && hasHour {
 			h := int(hour)
@@ -69,11 +77,25 @@ func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 				hourCounts[h]++
 			}
 		}
+
+		if hasValue && hasMinute {
+			m := int(minute)
+			if m >= 0 && m < 60 {
+				minuteSums[m] += value
+				minuteCounts[m]++
+			}
+		}
 	}
 
 	for h := range 24 {
 		if count := hourCounts[h]; count >= 2 {
 			m.seasonality[h] = hourSums[h] / float64(count)
+		}
+	}
+
+	for min := range 60 {
+		if count := minuteCounts[min]; count >= 2 {
+			m.minuteSeasonality[min] = minuteSums[min] / float64(count)
 		}
 	}
 
@@ -128,17 +150,31 @@ func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (For
 	forecastValues := make([]float64, numSteps)
 
 	currentHour := -1
+	currentMinute := -1
 	if len(features.Rows) > 0 {
 		lastRow := features.Rows[len(features.Rows)-1]
 		if h, ok := lastRow["hour"]; ok {
 			currentHour = int(h)
+		}
+		if m, ok := lastRow["minute"]; ok {
+			currentMinute = int(m)
 		}
 	}
 
 	for i := 0; i < numSteps; i++ {
 		value := baseForecast
 
-		if currentHour >= 0 && len(m.seasonality) > 0 {
+		// Prefer minute-of-hour seasonality (more granular) over hour-of-day
+		if currentMinute >= 0 && len(m.minuteSeasonality) > 0 {
+			minutesAhead := (i * m.stepSec) / 60
+			futureMinute := (currentMinute + minutesAhead) % 60
+
+			if seasonalMean, ok := m.minuteSeasonality[futureMinute]; ok {
+				// Give minute seasonality strong weight (70%) since it's more precise
+				value = 0.3*baseForecast + 0.7*seasonalMean
+			}
+		} else if currentHour >= 0 && len(m.seasonality) > 0 {
+			// Fall back to hour-of-day seasonality
 			hoursAhead := (i * m.stepSec) / 3600
 			futureHour := (currentHour + hoursAhead) % 24
 

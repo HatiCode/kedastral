@@ -52,7 +52,9 @@ func TestForecasterClient_GetSnapshot_Success(t *testing.T) {
 			DesiredReplicas: []int{2, 3, 3},
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -88,10 +90,12 @@ func TestForecasterClient_GetSnapshot_Stale(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 
 		resp := SnapshotResponse{
-			Workload:   "test-api",
+			Workload:    "test-api",
 			GeneratedAt: time.Now().Add(-5 * time.Minute),
 		}
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -109,7 +113,9 @@ func TestForecasterClient_GetSnapshot_Stale(t *testing.T) {
 func TestForecasterClient_GetSnapshot_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "snapshot not found"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"error": "snapshot not found"}); err != nil {
+			t.Errorf("failed to encode error response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -140,7 +146,9 @@ func TestForecasterClient_GetSnapshot_ContextCancellation(t *testing.T) {
 	// Server that delays response
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(100 * time.Millisecond)
-		json.NewEncoder(w).Encode(SnapshotResponse{})
+		if err := json.NewEncoder(w).Encode(SnapshotResponse{}); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -160,7 +168,9 @@ func TestForecasterClient_GetSnapshot_Timeout(t *testing.T) {
 	// Server that delays response longer than client timeout
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)
-		json.NewEncoder(w).Encode(SnapshotResponse{})
+		if err := json.NewEncoder(w).Encode(SnapshotResponse{}); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -176,7 +186,9 @@ func TestForecasterClient_GetSnapshot_Timeout(t *testing.T) {
 func TestForecasterClient_GetSnapshot_InvalidJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("invalid json"))
+		if _, err := w.Write([]byte("invalid json")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -202,34 +214,34 @@ func TestForecasterClient_GetSnapshot_ServerError(t *testing.T) {
 
 func TestIsStale(t *testing.T) {
 	tests := []struct {
-		name       string
+		name        string
 		generatedAt time.Time
-		staleAfter time.Duration
-		want       bool
+		staleAfter  time.Duration
+		want        bool
 	}{
 		{
-			name:       "fresh snapshot",
+			name:        "fresh snapshot",
 			generatedAt: time.Now().Add(-30 * time.Second),
-			staleAfter: 2 * time.Minute,
-			want:       false,
+			staleAfter:  2 * time.Minute,
+			want:        false,
 		},
 		{
-			name:       "stale snapshot",
+			name:        "stale snapshot",
 			generatedAt: time.Now().Add(-5 * time.Minute),
-			staleAfter: 2 * time.Minute,
-			want:       true,
+			staleAfter:  2 * time.Minute,
+			want:        true,
 		},
 		{
-			name:       "just before threshold",
+			name:        "just before threshold",
 			generatedAt: time.Now().Add(-1*time.Minute - 59*time.Second),
-			staleAfter: 2 * time.Minute,
-			want:       false, // Should be fresh
+			staleAfter:  2 * time.Minute,
+			want:        false, // Should be fresh
 		},
 		{
-			name:       "very old snapshot",
+			name:        "very old snapshot",
 			generatedAt: time.Now().Add(-1 * time.Hour),
-			staleAfter: 2 * time.Minute,
-			want:       true,
+			staleAfter:  2 * time.Minute,
+			want:        true,
 		},
 	}
 
@@ -252,12 +264,16 @@ func TestForecasterClient_GetSnapshot_URLConstruction(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedURL = r.URL.String()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(SnapshotResponse{Workload: "test"})
+		if err := json.NewEncoder(w).Encode(SnapshotResponse{Workload: "test"}); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
 	}))
 	defer server.Close()
 
 	client := NewForecasterClient(server.URL)
-	client.GetSnapshot(context.Background(), "my-api-prod")
+	if _, err := client.GetSnapshot(context.Background(), "my-api-prod"); err != nil {
+		t.Errorf("GetSnapshot() error = %v", err)
+	}
 
 	expectedPath := "/forecast/current?workload=my-api-prod"
 	if capturedURL != expectedPath {

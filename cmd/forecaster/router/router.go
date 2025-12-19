@@ -80,6 +80,8 @@ func handleGetSnapshot(store storage.Store, staleAfter time.Duration, logger *sl
 			"desiredReplicas": snapshot.DesiredReplicas,
 		}
 
-		httpx.WriteJSON(w, http.StatusOK, resp)
+		if err := httpx.WriteJSON(w, http.StatusOK, resp); err != nil {
+			logger.Error("failed to write JSON response", "error", err)
+		}
 	}
 }

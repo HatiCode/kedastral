@@ -5,9 +5,9 @@
 // configuration needed by the scaler service.
 //
 // Supported configuration sources (in order of precedence):
-//   1. Command-line flags
-//   2. Environment variables
-//   3. Default values
+//  1. Command-line flags
+//  2. Environment variables
+//  3. Default values
 //
 // Example usage:
 //

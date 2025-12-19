@@ -49,6 +49,7 @@ func (p *PrometheusAdapter) Collect(ctx context.Context, windowSeconds int) (*Da
 	if err != nil {
 		return &DataFrame{}, fmt.Errorf("invalid ServerURL: %w", err)
 	}
+	u.Path = "/api/v1/query_range"
 
 	q := u.Query()
 	q.Set("query", p.Query)
