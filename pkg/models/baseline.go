@@ -5,17 +5,31 @@ import (
 	"fmt"
 )
 
-// BaselineModel implements a simple forecasting model using exponential moving averages
-// and optional hour-of-day seasonality patterns.
+// BaselineModel implements a predictive forecasting model combining:
+//   - Linear trend detection (slope from recent history)
+//   - Momentum detection (acceleration/deceleration)
+//   - Multi-level seasonality (minute-of-hour and hour-of-day patterns)
+//
+// **Recommended Usage:**
+//   - Training data: 3-24 hours of historical metrics (optimal: 6-12 hours)
+//   - Forecast horizon: up to 60 minutes ahead
+//   - Works best with: recurring patterns (e.g., traffic spikes, daily cycles)
+//
+// **Limitations:**
+//   - For patterns > 24 hours (weekly cycles), consider ARIMA model
+//   - Requires consistent step size in training data
+//   - Pattern detection needs at least 2-3 occurrences to learn reliably
 //
 // Algorithm:
-//  1. Compute EMA5m and EMA30m over recent window
-//  2. Base forecast = 0.7*EMA5m + 0.3*EMA30m
-//  3. Optional seasonality: if sufficient hour-of-day data exists,
-//     compute Mean_h and blend: yhat = 0.8*Base + 0.2*Mean_h
-//  4. All values are non-negative
+//  1. Training: Learn minute-of-hour and hour-of-day statistical patterns
+//  2. Trend: Compute recent slope via linear regression over trailing window
+//  3. Momentum: Detect acceleration by comparing recent vs older slopes
+//  4. Forecast: For each future step t:
+//     a. Base = current + slope*t + 0.5*acceleration*t²
+//     b. Seasonal adjustment from learned patterns
+//     c. Combine base trend with seasonal component (adaptive weighting)
+//  5. Clamp to non-negative values
 //
-// This model is stateless and requires no training.
 type BaselineModel struct {
 	// metric is the name of the metric being forecast
 	metric string
@@ -26,24 +40,31 @@ type BaselineModel struct {
 	// horizon is the total forecast window in seconds
 	horizon int
 
-	// seasonality stores hour-of-day means if available
-	// map key is hour (0-23), value is mean for that hour
-	seasonality map[int]float64
+	// minuteSeasonality stores minute-of-hour patterns (0-59)
+	// Captures intra-hour patterns like 30-min spikes
+	minuteSeasonality map[int]*seasonalPattern
 
-	// minuteSeasonality stores minute-of-hour means for finer-grained patterns
-	// map key is minute (0-59), value is mean for that minute
-	minuteSeasonality map[int]float64
+	// hourSeasonality stores hour-of-day patterns (0-23)
+	// Captures daily patterns like business hours vs night
+	hourSeasonality map[int]*seasonalPattern
+}
+
+// seasonalPattern holds statistical summary for a recurring pattern
+type seasonalPattern struct {
+	mean  float64 // average value at this time point
+	max   float64 // maximum observed value
+	min   float64 // minimum observed value
+	count int     // number of observations
 }
 
 // NewBaselineModel creates a new baseline forecasting model.
-// The model uses EMA-based forecasting with optional seasonality.
 func NewBaselineModel(metric string, stepSec, horizon int) *BaselineModel {
 	return &BaselineModel{
 		metric:            metric,
 		stepSec:           stepSec,
 		horizon:           horizon,
-		seasonality:       make(map[int]float64),
-		minuteSeasonality: make(map[int]float64),
+		minuteSeasonality: make(map[int]*seasonalPattern),
+		hourSeasonality:   make(map[int]*seasonalPattern),
 	}
 }
 
@@ -52,69 +73,120 @@ func (m *BaselineModel) Name() string {
 	return "baseline"
 }
 
-// Train extracts seasonality patterns from historical data.
-// For the baseline model, this computes hour-of-day and minute-of-hour means if sufficient data exists.
-// Returns nil (training is optional for baseline).
+// Train learns seasonal patterns from historical data.
+//
+// The model extracts:
+//  - Minute-of-hour patterns (0-59): for intra-hour cycles
+//  - Hour-of-day patterns (0-23): for daily cycles
+//
+// For each time bucket, computes: mean, min, max, count
+// Requires at least 2 observations per bucket to establish a pattern.
 func (m *BaselineModel) Train(ctx context.Context, history FeatureFrame) error {
 	if len(history.Rows) == 0 {
 		return nil
 	}
 
-	hourSums := make(map[int]float64)
-	hourCounts := make(map[int]int)
-	minuteSums := make(map[int]float64)
-	minuteCounts := make(map[int]int)
+	// Accumulators for minute-of-hour patterns
+	minuteValues := make(map[int][]float64)
 
+	// Accumulators for hour-of-day patterns
+	hourValues := make(map[int][]float64)
+
+	// Collect all values by their time buckets
 	for _, row := range history.Rows {
 		value, hasValue := row["value"]
-		hour, hasHour := row["hour"]
-		minute, hasMinute := row["minute"]
-
-		if hasValue && hasHour {
-			h := int(hour)
-			if h >= 0 && h < 24 {
-				hourSums[h] += value
-				hourCounts[h]++
-			}
+		if !hasValue {
+			continue
 		}
 
-		if hasValue && hasMinute {
+		// Collect minute-of-hour data
+		if minute, hasMinute := row["minute"]; hasMinute {
 			m := int(minute)
 			if m >= 0 && m < 60 {
-				minuteSums[m] += value
-				minuteCounts[m]++
+				minuteValues[m] = append(minuteValues[m], value)
+			}
+		}
+
+		// Collect hour-of-day data
+		if hour, hasHour := row["hour"]; hasHour {
+			h := int(hour)
+			if h >= 0 && h < 24 {
+				hourValues[h] = append(hourValues[h], value)
 			}
 		}
 	}
 
-	for h := range 24 {
-		if count := hourCounts[h]; count >= 2 {
-			m.seasonality[h] = hourSums[h] / float64(count)
+	// Compute statistics for each minute-of-hour
+	for minute := 0; minute < 60; minute++ {
+		values := minuteValues[minute]
+		if len(values) >= 2 {
+			m.minuteSeasonality[minute] = computeSeasonalPattern(values)
 		}
 	}
 
-	for min := range 60 {
-		if count := minuteCounts[min]; count >= 2 {
-			m.minuteSeasonality[min] = minuteSums[min] / float64(count)
+	// Compute statistics for each hour-of-day
+	for hour := 0; hour < 24; hour++ {
+		values := hourValues[hour]
+		if len(values) >= 2 {
+			m.hourSeasonality[hour] = computeSeasonalPattern(values)
 		}
 	}
 
 	return nil
 }
 
-// Predict generates a forecast using EMA-based prediction with optional seasonality.
+// computeSeasonalPattern calculates statistical summary from a set of values
+func computeSeasonalPattern(values []float64) *seasonalPattern {
+	if len(values) == 0 {
+		return nil
+	}
+
+	sum := 0.0
+	min := values[0]
+	max := values[0]
+
+	for _, v := range values {
+		sum += v
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+
+	return &seasonalPattern{
+		mean:  sum / float64(len(values)),
+		min:   min,
+		max:   max,
+		count: len(values),
+	}
+}
+
+// Predict generates a forecast combining trend, momentum, and seasonality.
 //
-// The features FeatureFrame should contain recent historical values with:
+// Required features:
 //   - "value": the metric value (required)
-//   - "hour": hour of day 0-23 (optional, for seasonality)
+//   - "minute": minute of hour 0-59 (recommended for intra-hour patterns)
+//   - "hour": hour of day 0-23 (recommended for daily patterns)
 //   - "timestamp": Unix timestamp (optional, for ordering)
 //
-// Returns a Forecast with Values of length horizon/stepSec, all non-negative.
+// Algorithm:
+//  1. Detect linear trend (slope) from recent values
+//  2. Detect momentum (acceleration) by comparing recent vs older trend
+//  3. For each forecast step:
+//     - Compute base prediction using trend + momentum
+//     - Look up seasonal pattern for that future time
+//     - Combine base and seasonal predictions with adaptive weighting
+//  4. Clamp to non-negative values
+//
+// Returns a Forecast with Values of length horizon/stepSec.
 func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (Forecast, error) {
 	if len(features.Rows) == 0 {
 		return Forecast{}, fmt.Errorf("features cannot be empty")
 	}
 
+	// Extract value series
 	values := make([]float64, 0, len(features.Rows))
 	for _, row := range features.Rows {
 		if v, ok := row["value"]; ok {
@@ -126,22 +198,28 @@ func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (For
 		return Forecast{}, fmt.Errorf("no 'value' field found in features")
 	}
 
-	ema5 := computeEMA(values, 5)
-	ema30 := computeEMA(values, 30)
+	currentValue := values[len(values)-1]
 
-	baseForecast := 0.7*ema5 + 0.3*ema30
+	// Detect trend (slope) from recent history
+	trend := detectTrend(values)
 
-	lastValue := values[len(values)-1]
-	if len(values) >= 2 {
-		if lastValue > baseForecast {
-			baseForecast = lastValue
+	// Detect momentum (acceleration) by comparing recent vs older trends
+	momentum := detectMomentum(values)
+
+	// Get current time context
+	currentMinute := -1
+	currentHour := -1
+	if len(features.Rows) > 0 {
+		lastRow := features.Rows[len(features.Rows)-1]
+		if m, ok := lastRow["minute"]; ok {
+			currentMinute = int(m)
+		}
+		if h, ok := lastRow["hour"]; ok {
+			currentHour = int(h)
 		}
 	}
 
-	if baseForecast < 0 {
-		baseForecast = 0
-	}
-
+	// Generate forecast
 	numSteps := m.horizon / m.stepSec
 	if numSteps <= 0 {
 		numSteps = 1
@@ -149,45 +227,81 @@ func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (For
 
 	forecastValues := make([]float64, numSteps)
 
-	currentHour := -1
-	currentMinute := -1
-	if len(features.Rows) > 0 {
-		lastRow := features.Rows[len(features.Rows)-1]
-		if h, ok := lastRow["hour"]; ok {
-			currentHour = int(h)
-		}
-		if m, ok := lastRow["minute"]; ok {
-			currentMinute = int(m)
-		}
-	}
-
 	for i := 0; i < numSteps; i++ {
-		value := baseForecast
+		// Time offset in seconds
+		timeOffset := float64((i + 1) * m.stepSec)
 
-		// Prefer minute-of-hour seasonality (more granular) over hour-of-day
+		// Base prediction using trend + momentum (quadratic extrapolation)
+		// Formula: y(t) = y0 + trend*t + 0.5*momentum*t²
+		basePrediction := currentValue + trend*timeOffset + 0.5*momentum*timeOffset*timeOffset/60.0
+
+		// Calculate future time bucket for seasonal lookup
+		secondsAhead := (i + 1) * m.stepSec
+		minutesAhead := secondsAhead / 60
+		hoursAhead := secondsAhead / 3600
+
+		var seasonalValue float64
+		var hasSeasonalPattern bool
+
+		// Prefer minute-of-hour seasonality (more granular)
 		if currentMinute >= 0 && len(m.minuteSeasonality) > 0 {
-			minutesAhead := (i * m.stepSec) / 60
 			futureMinute := (currentMinute + minutesAhead) % 60
-
-			if seasonalMean, ok := m.minuteSeasonality[futureMinute]; ok {
-				// Give minute seasonality strong weight (70%) since it's more precise
-				value = 0.3*baseForecast + 0.7*seasonalMean
+			if pattern, ok := m.minuteSeasonality[futureMinute]; ok && pattern != nil {
+				// Use the mean, but favor max if we're detecting upward momentum
+				seasonalValue = pattern.mean
+				if momentum > 0 && pattern.max > pattern.mean {
+					// Blend mean and max based on momentum strength
+					seasonalValue = 0.7*pattern.mean + 0.3*pattern.max
+				}
+				hasSeasonalPattern = true
 			}
-		} else if currentHour >= 0 && len(m.seasonality) > 0 {
-			// Fall back to hour-of-day seasonality
-			hoursAhead := (i * m.stepSec) / 3600
+		}
+
+		// Fall back to hour-of-day seasonality if no minute pattern
+		if !hasSeasonalPattern && currentHour >= 0 && len(m.hourSeasonality) > 0 {
 			futureHour := (currentHour + hoursAhead) % 24
-
-			if seasonalMean, ok := m.seasonality[futureHour]; ok {
-				value = 0.8*baseForecast + 0.2*seasonalMean
+			if pattern, ok := m.hourSeasonality[futureHour]; ok && pattern != nil {
+				seasonalValue = pattern.mean
+				if momentum > 0 && pattern.max > pattern.mean {
+					seasonalValue = 0.7*pattern.mean + 0.3*pattern.max
+				}
+				hasSeasonalPattern = true
 			}
 		}
 
-		if value < 0 {
-			value = 0
+		var finalValue float64
+		if hasSeasonalPattern {
+			// Adaptive weighting: trust seasonal pattern more when:
+			// - It's significantly different from base prediction (indicates real pattern)
+			// - The pattern has been observed multiple times (higher count)
+
+			// If seasonal value is much higher than base, it might indicate an upcoming spike
+			ratio := seasonalValue / (basePrediction + 1.0) // +1 to avoid division by zero
+
+			if ratio > 1.5 {
+				// Strong seasonal spike expected - trust it heavily
+				finalValue = 0.2*basePrediction + 0.8*seasonalValue
+			} else if ratio > 1.2 {
+				// Moderate seasonal increase
+				finalValue = 0.3*basePrediction + 0.7*seasonalValue
+			} else if ratio < 0.8 {
+				// Seasonal dip expected
+				finalValue = 0.4*basePrediction + 0.6*seasonalValue
+			} else {
+				// Seasonal and trend agree - blend equally
+				finalValue = 0.5*basePrediction + 0.5*seasonalValue
+			}
+		} else {
+			// No seasonal pattern - rely on trend + momentum
+			finalValue = basePrediction
 		}
 
-		forecastValues[i] = value
+		// Clamp to non-negative
+		if finalValue < 0 {
+			finalValue = 0
+		}
+
+		forecastValues[i] = finalValue
 	}
 
 	return Forecast{
@@ -198,33 +312,74 @@ func (m *BaselineModel) Predict(ctx context.Context, features FeatureFrame) (For
 	}, nil
 }
 
-// computeEMA calculates the exponential moving average over the most recent n points.
-// If there are fewer than n points, uses all available points.
-// Returns 0 if values is empty.
+// detectTrend computes the slope (rate of change per second) from recent values.
+// Uses simple linear regression on the most recent window of data.
 //
-// EMA formula: EMA_t = α * value_t + (1-α) * EMA_{t-1}
-// where α = 2 / (n + 1)
-func computeEMA(values []float64, n int) float64 {
-	if len(values) == 0 {
+// Returns slope in units per second (can be positive, negative, or zero).
+func detectTrend(values []float64) float64 {
+	if len(values) < 2 {
 		return 0
 	}
 
-	start := 0
-	if len(values) > n {
-		start = len(values) - n
+	// Use last 10 points or all available, whichever is smaller
+	windowSize := 10
+	if len(values) < windowSize {
+		windowSize = len(values)
 	}
-	window := values[start:]
 
-	if len(window) == 0 {
+	window := values[len(values)-windowSize:]
+
+	// Simple linear regression: y = a + b*x
+	// We want b (slope)
+	n := float64(len(window))
+	sumX := 0.0
+	sumY := 0.0
+	sumXY := 0.0
+	sumX2 := 0.0
+
+	for i, y := range window {
+		x := float64(i)
+		sumX += x
+		sumY += y
+		sumXY += x * y
+		sumX2 += x * x
+	}
+
+	// slope = (n*sumXY - sumX*sumY) / (n*sumX2 - sumX*sumX)
+	denominator := n*sumX2 - sumX*sumX
+	if denominator == 0 {
 		return 0
 	}
 
-	alpha := 2.0 / float64(len(window)+1)
-	ema := window[0]
+	slope := (n*sumXY - sumX*sumY) / denominator
 
-	for i := 1; i < len(window); i++ {
-		ema = alpha*window[i] + (1-alpha)*ema
+	// slope is in units per data point
+	// Convert to units per second (assuming data points are evenly spaced)
+	// This is a rough approximation - caller should scale by actual time intervals
+	return slope / 60.0 // Assume ~1 minute between points
+}
+
+// detectMomentum computes acceleration by comparing recent trend to older trend.
+// Returns change in slope (second derivative approximation).
+//
+// Positive momentum = accelerating upward
+// Negative momentum = decelerating or accelerating downward
+func detectMomentum(values []float64) float64 {
+	if len(values) < 6 {
+		return 0 // Need enough data to compare trends
 	}
 
-	return ema
+	// Split into two halves: older and recent
+	mid := len(values) / 2
+	olderValues := values[:mid]
+	recentValues := values[mid:]
+
+	// Compute trend for each half
+	olderTrend := detectTrend(olderValues)
+	recentTrend := detectTrend(recentValues)
+
+	// Momentum = change in trend
+	momentum := recentTrend - olderTrend
+
+	return momentum
 }
